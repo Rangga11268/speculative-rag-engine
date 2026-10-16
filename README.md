@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/Python-3.12-blue.svg)](https://python.org)
 [![CI Pipeline](https://github.com/Rangga11268/speculative-rag-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Rangga11268/speculative-rag-engine/actions)
-[![Tests Passing](https://img.shields.io/badge/Tests-284%20Passed-brightgreen.svg)]()
+[![Tests Passing](https://img.shields.io/badge/Tests-288%20Passed-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-Windows%20Native%20%7C%20Zero--Docker-success.svg)]()
 [![Architecture](https://img.shields.io/badge/Architecture-Dual--Speed%20Speculative%20RAG-orange.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -117,7 +117,7 @@ python demo.py
 ```
 *Showcases fast-path bypass, entropy-triggered reranking, and semantic cache hit directly in terminal.*
 
-### 4. Run Full Automated Test Suite (284 Tests)
+### 4. Run Full Automated Test Suite (288 Tests)
 ```bash
 python run_tests.py --tier full
 ```
@@ -127,7 +127,17 @@ python run_tests.py --tier full
 python benchmarks/benchmark_ablation.py --cycles 5
 ```
 
-### 6. Launch FastAPI Serving Layer
+### 6. Run MLflow Experiment Tracking & Ragas Evaluation
+```bash
+# Execute hyperparameter grid sweep
+python benchmarks/mlflow_experiment.py --sweep
+
+# Launch MLflow Dashboard UI
+mlflow ui --backend-store-uri sqlite:///mlruns.db
+```
+*Access interactive Pareto frontier charts, gating threshold comparisons, and Ragas metrics (Context Precision, Context Recall, Answer Relevancy) at `http://127.0.0.1:5000`.*
+
+### 7. Launch FastAPI Serving Layer
 ```bash
 python run.py
 ```

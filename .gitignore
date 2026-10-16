@@ -13,6 +13,7 @@ htmlcov/
 *.sqlite3
 *.log
 specrag_benchmark_temp.db
+mlruns/
 
 # Virtual environments
 venv/

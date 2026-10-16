@@ -46,7 +46,12 @@
 [Milestone 4: Ablation Benchmarks & Eval]      ✅ SELESAI & TERVERIFIKASI (3 Tests Passed)
    - benchmark_ablation.py comparing Bi-Encoder vs Full Cross-Encoder vs SpecRAG
    - Metrics: P50, P95, P99 Latency, NDCG@10, Recall@10, Compute Cost Reduction
-   - Total Automated Test Suite: 284/284 PASSING (16.96s)
+
+[Milestone 5: Ragas Eval & MLflow Tracking]    ✅ SELESAI & TERVERIFIKASI (4 Tests Passed)
+   - app/evaluation/metrics.py: Ragas-Compatible Evaluation (Context Precision, Recall, Answer Relevancy, Composite)
+   - benchmarks/mlflow_experiment.py: MLflow SQLite Backend Tracking (sqlite:///mlruns.db)
+   - Hyperparameter Grid Sweep across theta_gap and theta_entropy
+   - Total Automated Test Suite: 288/288 PASSING (100% Pass Rate)
 ```
 
 ---
@@ -97,11 +102,12 @@ D:\Ngoding\speculative-rag-engine/  (Junction: D:\Ngoding\AI_ML_Projects\specula
 │       ├── sqlite.py / postgres.py / vector_store.py
 │       └── bm25.py / rrf.py / hybrid.py
 │
-├── benchmarks/                # Evaluation & Benchmarks (Milestone 4)
+├── benchmarks/                # Evaluation & Benchmarks (Milestones 4 & 5)
 │   ├── benchmark_ablation.py  # Ablation evaluation script
-│   └── ablation_report.json   # Output report JSON
+│   ├── ablation_report.json   # Output report JSON
+│   └── mlflow_experiment.py   # MLflow tracking & hyperparameter sweep
 │
-├── tests/                     # 284 Automated Tests
+├── tests/                     # 288 Automated Tests (100% Pass)
 ├── run.py                     # Single-command server launcher
 └── run_tests.py               # Multi-tier test suite runner
 ```
@@ -118,7 +124,7 @@ python run.py
 ```
 *API docs interaktif dapat diakses di `http://127.0.0.1:8000/docs`.*
 
-### Menjalankan Seluruh Test Suite (284 Tests):
+### Menjalankan Seluruh Test Suite (288 Tests):
 ```bash
 python run_tests.py --tier full
 ```
@@ -127,3 +133,16 @@ python run_tests.py --tier full
 ```bash
 python benchmarks/benchmark_ablation.py --cycles 5
 ```
+
+### Menjalankan MLflow Experiment Tracking & Grid Sweep:
+```bash
+# Menjalankan tracking default:
+python benchmarks/mlflow_experiment.py
+
+# Menjalankan hyperparameter sweep:
+python benchmarks/mlflow_experiment.py --sweep
+
+# Membuka Dashboard Visualisasi MLflow:
+mlflow ui --backend-store-uri sqlite:///mlruns.db
+```
+*Buka browser di `http://127.0.0.1:5000` untuk melihat grafik Pareto frontier, hyperparameter sweep, dan metrik Ragas.*
