@@ -1,0 +1,41 @@
+{
+  "workload_size": 60,
+  "corpus_size": 20,
+  "architectures": {
+    "Vanilla Bi-Encoder": {
+      "mean_latency_ms": 0.64,
+      "p50_latency_ms": 0.62,
+      "p95_latency_ms": 0.81,
+      "p99_latency_ms": 0.93,
+      "ndcg_at_10": 0.8279,
+      "recall_at_10": 0.7778,
+      "rerank_calls": 0,
+      "rerank_ratio": 0.0,
+      "cache_hits": 0
+    },
+    "Full Cross-Encoder": {
+      "mean_latency_ms": 1.97,
+      "p50_latency_ms": 1.89,
+      "p95_latency_ms": 2.52,
+      "p99_latency_ms": 2.9,
+      "ndcg_at_10": 0.8536,
+      "recall_at_10": 0.8611,
+      "rerank_calls": 60,
+      "rerank_ratio": 1.0,
+      "cache_hits": 0
+    },
+    "SpecRAG (Ours)": {
+      "mean_latency_ms": 1.53,
+      "p50_latency_ms": 0.75,
+      "p95_latency_ms": 4.55,
+      "p99_latency_ms": 7.68,
+      "ndcg_at_10": 0.8536,
+      "recall_at_10": 0.8611,
+      "rerank_calls": 10,
+      "rerank_ratio": 0.1667,
+      "cache_hits": 50,
+      "fast_path_bypasses": 0,
+      "compute_cost_reduction_pct": 83.3
+    }
+  }
+}
