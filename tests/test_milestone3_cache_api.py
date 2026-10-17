@@ -1,5 +1,4 @@
-"""Tests for Milestone 3: Semantic Caching & FastAPI Serving Layer."""
-
+import asyncio
 import concurrent.futures
 import time
 import numpy as np
@@ -197,36 +196,38 @@ def test_redis_adapter_fallback():
     assert st["backend"] == "in_memory"
 
 
-@pytest.mark.asyncio
-async def test_engine_cache_integration(tmp_path):
+def test_engine_cache_integration(tmp_path):
     """Verify SpecRAGEngine routes to CACHE_HIT on repeated query."""
-    db_file = str(tmp_path / "test_engine_cache.db")
-    storage = SQLiteStorageRepository(db_file)
-    vector_idx = DenseVectorIndex(dimension=384)
-    engine = SpecRAGEngine(storage_repo=storage, vector_index=vector_idx)
+    async def _run():
+        db_file = str(tmp_path / "test_engine_cache.db")
+        storage = SQLiteStorageRepository(db_file)
+        vector_idx = DenseVectorIndex(dimension=384)
+        engine = SpecRAGEngine(storage_repo=storage, vector_index=vector_idx)
 
-    # Ingest document
-    engine.ingest_chunks([
-        DocumentChunk(
-            id="c_cache_1",
-            doc_id="d1",
-            text="Quantum computing utilizes quantum superposition and entanglement.",
-            embedding=[0.05] * 384,
-        )
-    ])
+        # Ingest document
+        engine.ingest_chunks([
+            DocumentChunk(
+                id="c_cache_1",
+                doc_id="d1",
+                text="Quantum computing utilizes quantum superposition and entanglement.",
+                embedding=[0.05] * 384,
+            )
+        ])
 
-    req = QueryRequest(query="Quantum computing superposition", top_k=1, use_cache=True)
+        req = QueryRequest(query="Quantum computing superposition", top_k=1, use_cache=True)
 
-    # First query -> Cache Miss (Fast path or rerank)
-    resp1 = await engine.query(req)
-    assert not resp1.cache_hit
-    assert resp1.route_taken in ("FAST_PATH_BYPASS", "RERANKED")
+        # First query -> Cache Miss (Fast path or rerank)
+        resp1 = await engine.query(req)
+        assert not resp1.cache_hit
+        assert resp1.route_taken in ("FAST_PATH_BYPASS", "RERANKED")
 
-    # Second query -> Cache Hit
-    resp2 = await engine.query(req)
-    assert resp2.cache_hit
-    assert resp2.route_taken == "CACHE_HIT"
-    assert resp2.latency_ms < resp1.latency_ms + 10.0  # Typically sub-10ms
+        # Second query -> Cache Hit
+        resp2 = await engine.query(req)
+        assert resp2.cache_hit
+        assert resp2.route_taken == "CACHE_HIT"
+        assert resp2.latency_ms < resp1.latency_ms + 10.0  # Typically sub-10ms
+
+    asyncio.run(_run())
 
 
 def test_fastapi_endpoints(tmp_path):

@@ -52,18 +52,19 @@ class TestHybridRetriever:
         assert results[0].score > 0.0
         assert results[0].score <= 1.0
 
-    @pytest.mark.asyncio
-    async def test_async_parallel_retrieval(self, setup_retriever, sample_chunks):
+    def test_async_parallel_retrieval(self, setup_retriever, sample_chunks):
         retriever = setup_retriever
         query_vec = sample_chunks[1].embedding
         query_text = "PostgreSQL and SQLite dual-storage"
 
-        results = await retriever.retrieve(
-            query_text=query_text,
-            query_vector=query_vec,
-            top_k=2,
-            dense_weight=1.0,
-            bm25_weight=1.0,
+        results = asyncio.run(
+            retriever.retrieve(
+                query_text=query_text,
+                query_vector=query_vec,
+                top_k=2,
+                dense_weight=1.0,
+                bm25_weight=1.0,
+            )
         )
 
         assert len(results) == 2
