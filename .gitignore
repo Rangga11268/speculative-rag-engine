@@ -21,10 +21,14 @@ venv/
 env/
 ENV/
 
-# Agent scratch & logs
+# Agent scratch & internal specs
 .agents/
 .idea/
 .vscode/
+AGENTS.md
+ORIGINAL_REQUEST.md
+TEST_*.md
+test_results*.json
 
 # OS artifacts
 Thumbs.db
