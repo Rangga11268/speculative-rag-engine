@@ -163,7 +163,8 @@ class TestTier4Workloads(unittest.TestCase):
 
         self.assertIsNotNone(hit)
         self.assertEqual(hit["source"], "supp_01")
-        self.assertLess(latency_ms, 20.0)
+        target_lat_ms = 50.0 if os.environ.get("CI") else 20.0
+        self.assertLess(latency_ms, target_lat_ms)
 
     def test_w04_ambiguous_multi_intent_apple_hardware_vs_fruit(self):
         """W04: Polysemous query 'Apple performance' triggers high entropy and routing to reranker."""

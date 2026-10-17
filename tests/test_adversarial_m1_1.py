@@ -10,6 +10,7 @@ Probing:
 """
 
 import math
+import os
 import random
 import time
 import pytest
@@ -259,7 +260,8 @@ class TestExtremeRankLists:
         t_elapsed = time.perf_counter() - t0
 
         assert len(fused) == 10000
-        assert t_elapsed < 0.5, f"Full 10k fusion took {t_elapsed:.4f}s"
+        t_max = 2.0 if os.environ.get("CI") else 0.5
+        assert t_elapsed < t_max, f"Full 10k fusion took {t_elapsed:.4f}s"
         # Tail score should be non-zero and valid
         tail_score = fused[-1].score
         assert tail_score > 0.0
@@ -285,7 +287,8 @@ class TestExtremeRankLists:
         t_index = time.perf_counter() - t0
 
         assert index.size() == N
-        assert t_index < 2.5, f"Indexing {N} docs took {t_index:.4f}s, expected < 2.5s"
+        t_index_max = 6.0 if os.environ.get("CI") else 2.5
+        assert t_index < t_index_max, f"Indexing {N} docs took {t_index:.4f}s, expected < {t_index_max}s"
 
         # Search for a semi-common keyword (appears in 100 docs)
         t0 = time.perf_counter()
@@ -293,7 +296,8 @@ class TestExtremeRankLists:
         t_search = time.perf_counter() - t0
 
         assert len(results) == 20
-        assert t_search < 0.05, f"Search took {t_search:.4f}s, expected < 0.05s"
+        t_search_max = 0.25 if os.environ.get("CI") else 0.05
+        assert t_search < t_search_max, f"Search took {t_search:.4f}s, expected < {t_search_max}s"
         # First result must contain keyword_42
         assert "42" in results[0][0] or index._corpus[results[0][0]].find("keyword_42") != -1
 

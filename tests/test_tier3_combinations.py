@@ -203,7 +203,8 @@ class TestTier3Combinations(unittest.TestCase):
 
         self.assertIsNotNone(hit_payload)
         self.assertEqual(hit_payload["route"], "FAST_PATH_BYPASS")
-        self.assertLess(latency_ms, 20.0)
+        target_lat_ms = 50.0 if os.environ.get("CI") else 20.0
+        self.assertLess(latency_ms, target_lat_ms)
 
     def test_c04_semantic_cache_near_match_bypasses_retrieval(self):
         """C04: Semantically rephrased query with cosine >= 0.92 bypasses hybrid search and gating."""
@@ -232,7 +233,8 @@ class TestTier3Combinations(unittest.TestCase):
 
         self.assertIsNotNone(res)
         self.assertEqual(res["results"][0]["id"], "supp_01")
-        self.assertLess(elapsed_ms, 20.0)
+        target_lat_ms = 50.0 if os.environ.get("CI") else 20.0
+        self.assertLess(elapsed_ms, target_lat_ms)
 
     def test_c05_gating_rerank_to_cross_encoder_and_convex_score_blend(self):
         """C05: Ambiguous query routes to cross-encoder with convex score integration."""

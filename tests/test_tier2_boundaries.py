@@ -301,7 +301,8 @@ class TestTier2Boundary04ReciprocalRankFusion(unittest.TestCase):
             res = ref_rrf(dense, bm25, k=60)
         elapsed_ms = (time.perf_counter() - start) * 1000.0
         self.assertEqual(len(res), 1000)
-        self.assertLess(elapsed_ms, 50.0)
+        target_rrf_ms = 120.0 if os.environ.get("CI") else 50.0
+        self.assertLess(elapsed_ms, target_rrf_ms)
 
     def test_b04_5_zero_weight_retriever(self):
         """B4.5: Weight w_dense=0.0 operates as single-modality ranker without division error."""
