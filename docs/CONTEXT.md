@@ -1,12 +1,12 @@
-# DEVELOPER & AGENT CONTEXT HANDOVER
+# System Context & Architectural Decisions
 ## SpecRAG: Entropy-Gated Speculative RAG Engine
 
-> **PANDUAN UNTUK AGENT / DEVELOPER BARU:**  
-> Jika Anda adalah AI Agent atau developer yang membuka repositori ini, baca dokumen ini terlebih dahulu! Dokumen ini merangkum seluruh konteks proyek, status saat ini, struktur folder, arsitektur, dan cara menjalankan server dan benchmark.
+> **Document Purpose:**  
+> Technical architecture overview, engineering design decisions, milestone verification status, directory structure, and benchmark procedures.
 
 ---
 
-## 1. Apa Proyek Ini? (30-Second Elevator Pitch)
+## 1. Project Overview & Problem Statement
 
 **SpecRAG** adalah mesin *Retrieval-Augmented Generation* (RAG) cerdas yang dirancang untuk mengatasi masalah latensi dan biaya komputasi di enterprise.
 
@@ -15,8 +15,7 @@
   * Jika pencarian awal sudah sangat yakin ($\Delta S$ tinggi, Entropi rendah), pertanyaan **langsung lolos (*bypass*) ke generator** dalam waktu **< 1ms**.
   * Hanya pertanyaan ambigu atau sulit yang dikirim ke *Cross-Encoder Reranker*.
   * Hasil query yang sering ditanyakan dilayani instan lewat **Semantic Cache (LRU Cosine Similarity > 0.92)** dalam **< 0.5ms**.
-* **Keunikan Lingkungan:** Dirancang **100% Native Windows Python 3.12 (Zero-Docker / Tanpa Docker)** menggunakan embedded storage (SQLite BLOB / in-memory NumPy) dengan fallback otomatis ke PostgreSQL lokal port 5432 dan Laragon Redis jika tersedia.
-* **Unified Workspace:** Tersedia dan ditautkan ke direktori terpusat portofolio AI/ML di `D:\Ngoding\AI_ML_Projects\speculative-rag-engine`.
+* **Keunikan Lingkungan:** Dirancang **Zero-Docker / Cross-Platform Local Execution** menggunakan embedded storage (SQLite BLOB / in-memory NumPy) dengan fallback otomatis ke PostgreSQL lokal dan Redis jika tersedia.
 
 ---
 
@@ -75,12 +74,12 @@ Dari eksekusi `python benchmarks/benchmark_ablation.py`:
 ## 4. Direktori & Inventaris File
 
 ```text
-D:\Ngoding\speculative-rag-engine/  (Junction: D:\Ngoding\AI_ML_Projects\speculative-rag-engine)
+speculative-rag-engine/
 │
 ├── docs/                      # Dokumentasi Resmi Lengkap
 │   ├── PRD.md                 # Product Requirements Document (kebutuhan bisnis & SLA)
 │   ├── ARCHITECTURE.md        # Spesifikasi teknis, formula matematika, & diagram
-│   └── CONTEXT.md             # Dokumen ini (handover & context switch)
+│   └── CONTEXT.md             # Dokumen ini (System Context & Design Decisions)
 │
 ├── app/                       # Source Code Utama
 │   ├── config.py              # Konfigurasi Pydantic Settings

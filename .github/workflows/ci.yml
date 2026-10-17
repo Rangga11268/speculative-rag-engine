@@ -31,10 +31,15 @@ jobs:
         pip install -r requirements.txt
         pip install matplotlib
 
-    - name: Execute Full Automated Test Suite (284 Tests)
+    - name: Execute Full Automated Test Suite (288 Tests)
       run: |
         python run_tests.py --tier full
+
+    - name: Run Interactive Live Showcase Demo
+      run: |
+        python demo.py
 
     - name: Verify Ablation Benchmark Script
       run: |
         python benchmarks/benchmark_ablation.py --cycles 2
+

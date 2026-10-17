@@ -16,3 +16,4 @@ python-dotenv>=1.0.0
 # Optional Enhancement Packages & Testing
 pytest>=8.0.0
 redis>=5.0.0
+matplotlib>=3.8.0

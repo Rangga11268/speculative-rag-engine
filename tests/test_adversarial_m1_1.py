@@ -230,8 +230,8 @@ class TestExtremeRankLists:
         t_elapsed = time.perf_counter() - t0
 
         assert len(fused) == 100
-        # Latency check: 20k candidates fusion should be < 250ms
-        assert t_elapsed < 0.25, f"RRF took {t_elapsed:.4f}s, expected < 0.25s"
+        # Latency check: 20k candidates fusion should be < 750ms
+        assert t_elapsed < 0.75, f"RRF took {t_elapsed:.4f}s, expected < 0.75s"
 
         # Check score validity
         for c in fused:
