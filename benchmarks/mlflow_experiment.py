@@ -21,8 +21,11 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import numpy as np
 
 os.environ["MLFLOW_DISABLE_AGENT_HINT"] = "1"
-import mlflow
-import mlflow.tracking
+try:
+    import mlflow
+    import mlflow.tracking
+except ImportError:
+    mlflow = None
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
@@ -221,6 +224,9 @@ def log_run(
     run_name: Optional[str] = None,
 ) -> None:
     """Execute one benchmark configuration and log everything to MLflow."""
+    if mlflow is None:
+        print("  [WARN] MLflow not installed; skipping remote/local MLflow logging.")
+        return
     mlflow.set_experiment(EXPERIMENT_NAME)
 
     params = {
