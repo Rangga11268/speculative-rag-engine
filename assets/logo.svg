@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0f1d" />
+      <stop offset="50%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+
+    <!-- Speculative Beam Gradient -->
+    <linearGradient id="beamGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="60%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#a855f7" />
+    </linearGradient>
+
+    <!-- Entropy Gate Arc Gradient -->
+    <linearGradient id="gateGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#047857" />
+    </linearGradient>
+  </defs>
+
+  <!-- Frame Background -->
+  <rect width="512" height="512" rx="96" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="4" />
+
+  <!-- Background Vector Coordinate Matrix Grid -->
+  <g stroke="#1e293b" stroke-width="1.5" stroke-dasharray="4 6" opacity="0.5">
+    <line x1="80" y1="170" x2="432" y2="170" />
+    <line x1="80" y1="256" x2="432" y2="256" />
+    <line x1="80" y1="342" x2="432" y2="342" />
+    <line x1="170" y1="80" x2="170" y2="432" />
+    <line x1="256" y1="80" x2="256" y2="432" />
+    <line x1="342" y1="80" x2="342" y2="432" />
+  </g>
+
+  <!-- Speculative Draft Branch (Fast Low-Latency Beam) -->
+  <path d="M 100 256 L 220 170 L 320 170 L 412 230" fill="none" stroke="#38bdf8" stroke-width="4" stroke-dasharray="8 6" opacity="0.8" />
+
+  <!-- Verification Target Branch (Dense Ground-Truth Path) -->
+  <path d="M 100 256 L 220 342 L 320 342 L 412 282" fill="none" stroke="#818cf8" stroke-width="4" opacity="0.8" />
+
+  <!-- Center Entropy Gating Diamond (Decision Hub) -->
+  <polygon points="256 186, 326 256, 256 326, 186 256" fill="#0f172a" stroke="url(#beamGrad)" stroke-width="5" />
+
+  <!-- Inner Shannon Entropy Symbol / Threshold Node -->
+  <circle cx="256" cy="256" r="30" fill="#020617" stroke="#10b981" stroke-width="3" />
+  <path d="M 246 256 L 254 246 L 266 266" fill="none" stroke="#10b981" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Speculative Query Tokens (Input Stream) -->
+  <circle cx="100" cy="256" r="10" fill="#38bdf8" />
+  <circle cx="100" cy="256" r="18" fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.5" />
+
+  <!-- Speculative Retrieval Nodes (BM25 + Dense SIMD) -->
+  <circle cx="220" cy="170" r="7" fill="#38bdf8" />
+  <circle cx="320" cy="170" r="7" fill="#38bdf8" />
+  <circle cx="220" cy="342" r="7" fill="#818cf8" />
+  <circle cx="320" cy="342" r="7" fill="#818cf8" />
+
+  <!-- Output Synthesis Node (Gated Low-Latency Stream) -->
+  <circle cx="412" cy="256" r="12" fill="#10b981" />
+  <circle cx="412" cy="256" r="22" fill="none" stroke="#10b981" stroke-width="2.5" opacity="0.6" />
+</svg>

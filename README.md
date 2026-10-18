@@ -1,11 +1,20 @@
-# SpecRAG: Entropy-Gated Speculative Retrieval-Augmented Generation Engine
+<p align="center">
+  <img src="assets/logo.svg" alt="SpecRAG Engine Logo" width="130" height="130">
+</p>
 
-[![Python Version](https://img.shields.io/badge/Python-3.12-blue.svg)](https://python.org)
-[![CI Pipeline](https://github.com/Rangga11268/speculative-rag-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Rangga11268/speculative-rag-engine/actions)
-[![Tests Passing](https://img.shields.io/badge/Tests-288%20Passed-brightgreen.svg)]()
-[![Platform](https://img.shields.io/badge/Platform-Cross--Platform%20%7C%20Zero--Docker-success.svg)]()
-[![Architecture](https://img.shields.io/badge/Architecture-Dual--Speed%20Speculative%20RAG-orange.svg)]()
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<h1 align="center">SpecRAG</h1>
+<p align="center">
+  <strong>Low-Latency Entropy-Gated Speculative Retrieval-Augmented Generation Engine</strong><br>
+  <em>Hybrid SIMD dense vector & BM25 retrieval fused with Reciprocal Rank Fusion (RRF k=60) and Shannon entropy gating.</em>
+</p>
+
+<p align="center">
+  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.12-blue.svg" alt="Python 3.12"></a>
+  <a href="https://github.com/Rangga11268/speculative-rag-engine/actions"><img src="https://github.com/Rangga11268/speculative-rag-engine/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Tests-288%20Passed-brightgreen.svg" alt="Tests"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Platform-Cross--Platform%20%7C%20Zero--Docker-success.svg" alt="Platform"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
 > **SpecRAG** is a production-grade, low-latency, entropy-gated speculative retrieval-augmented generation engine engineered to eliminate the severe 200ms–500ms latency and cost bottleneck of monolithic Cross-Encoder rerankers in enterprise RAG pipelines.
 
