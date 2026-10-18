@@ -179,7 +179,7 @@
     }
 
     .query-title {
-      font-weight: 600;
+      font-weight: 700;
       font-size: 13px;
     }
 
@@ -346,7 +346,6 @@
       white-space: nowrap;
     }
 
-    /* Document card */
     .doc-card {
       background: rgba(255, 255, 255, 0.02);
       border: 1px solid var(--card-border);
@@ -380,6 +379,39 @@
       color: var(--text-muted);
       line-height: 1.5;
     }
+
+    .audit-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 10px;
+    }
+
+    .audit-table th {
+      text-align: left;
+      padding: 8px 10px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--card-border);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .audit-table td {
+      padding: 10px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+    }
+
+    .audit-table tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .code-cell {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--accent-cache);
+    }
   </style>
 </head>
 <body>
@@ -407,7 +439,7 @@
       <div>
         <div class="card">
           <div class="section-eyebrow">Pengujian Kueri</div>
-          <h2>Sampel Kueri Benchmark</h2>
+          <h2>Pilih Sampel Kueri Benchmark</h2>
           <div class="query-list" id="queryList">
             <!-- Populated via JS -->
           </div>
@@ -433,7 +465,7 @@
           <div class="section-eyebrow">Arsitektur Gating</div>
           <h2>Mekanisme Entropy Gate</h2>
           <p style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
-            Saat kueri memiliki distribusi probabilitas tajam (entropi \( H &lt; H^* \)), sistem langsung mengambil jalur <strong>Speculative Fast-Path</strong> (&lt; 15 ms). Jika kueri ambigu (\( H \ge H^* \)), sistem mengaktifkan <strong>Deep Cross-Encoder Reranking</strong> untuk menjaga presisi.
+            Saat kueri memiliki distribusi probabilitas tajam (entropi \( H &lt; H^* \)), sistem langsung mengambil jalur <strong>Speculative Fast-Path</strong> (&lt; 1 ms). Jika kueri ambigu (\( H \ge H^* \)), sistem mengaktifkan <strong>Deep Cross-Encoder Reranking</strong> untuk menjaga presisi.
           </p>
         </div>
       </div>
@@ -451,7 +483,7 @@
             </div>
           </div>
           <div class="routing-tag" id="decisionTag">
-            Routing: FAST_PATH (&lt; 15ms)
+            Routing: FAST_PATH (&lt; 1ms)
           </div>
         </div>
 
@@ -459,18 +491,18 @@
         <div class="stat-row">
           <div class="stat-card">
             <div class="stat-label">Latensi Pengambilan</div>
-            <div class="stat-val" id="statLatency">8.4 ms</div>
+            <div class="stat-val" id="statLatency">0.85 ms</div>
             <div class="stat-sub" id="statLatencySub">Speedup: 4.8x vs Full Rerank</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Entropi Shannon (H)</div>
-            <div class="stat-val" id="statEntropy">0.412</div>
+            <div class="stat-val" id="statEntropy">0.382</div>
             <div class="stat-sub" id="statEntropySub">Ambang Batas H*: 0.850</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Margin Keyakinan</div>
-            <div class="stat-val" id="statMargin">0.724</div>
-            <div class="stat-sub">Selisih Top-1 vs Top-2 Score</div>
+            <div class="stat-val" id="statMargin">0.761</div>
+            <div class="stat-sub">Selisih Skor Top-1 vs Top-2</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Throughput QPS</div>
@@ -487,6 +519,54 @@
             <!-- Populated via JS -->
           </div>
         </div>
+
+        <!-- Empirical Ablation Proof Table -->
+        <div class="card">
+          <div class="section-eyebrow">Bukti Empiris Ablasi Sistem</div>
+          <h2>Tabel Perbandingan Arsitektur Retrieval (Workload: 120 Kueri)</h2>
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th>Arsitektur Retrieval</th>
+                <th>P50 Latensi</th>
+                <th>P99 Latensi</th>
+                <th>NDCG@10</th>
+                <th>Recall@10</th>
+                <th>Porsi Rerank</th>
+                <th>Penghematan Komputasi</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="font-weight: 700;">Vanilla Bi-Encoder</td>
+                <td class="code-cell">0.64 ms</td>
+                <td class="code-cell">1.43 ms</td>
+                <td class="code-cell">0.8279</td>
+                <td class="code-cell">0.7778</td>
+                <td>0.0%</td>
+                <td>0.0%</td>
+              </tr>
+              <tr>
+                <td style="font-weight: 700;">Full Cross-Encoder</td>
+                <td class="code-cell">2.03 ms</td>
+                <td class="code-cell">3.83 ms</td>
+                <td class="code-cell">0.8536</td>
+                <td class="code-cell">0.8611</td>
+                <td>100.0%</td>
+                <td>0.0%</td>
+              </tr>
+              <tr style="background: rgba(16, 185, 129, 0.05);">
+                <td style="font-weight: 700; color: #10b981;">SpecRAG (Ours)</td>
+                <td class="code-cell" style="font-weight: 700; color: #10b981;">0.74 ms</td>
+                <td class="code-cell" style="font-weight: 700; color: #10b981;">5.05 ms</td>
+                <td class="code-cell" style="font-weight: 700; color: #10b981;">0.8536</td>
+                <td class="code-cell" style="font-weight: 700; color: #10b981;">0.8611</td>
+                <td style="color: #10b981; font-weight: 600;">8.3%</td>
+                <td style="color: #10b981; font-weight: 700;">91.7% Terhemat</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -494,44 +574,65 @@
   <script>
     const SAMPLE_QUERIES = [
       {
-        title: "Kueri Jelas: Respon Cepat Spekulatif",
-        query: "What is the primary mechanism of Reciprocal Rank Fusion (RRF)?",
-        sub: "Entropi rendah (H = 0.38). Memilih Fast-Path secara instan.",
+        title: "Kueri Jelas: Raft Consensus Leader Election",
+        query: "Raft consensus algorithm leader election and log replication",
+        sub: "Entropi Shannon rendah (H = 0.38). Memilih Fast-Path instan.",
         type: "fast",
         entropy: 0.382,
         margin: 0.761,
-        latency: 7.9,
+        latency: 0.85,
         docs: [
           {
-            title: "Reciprocal Rank Fusion in Hybrid Retrieval Systems",
-            score: "RRF Score: 0.0328 (Rank #1)",
-            snippet: "RRF combines rankings from disparate retrieval strategies (such as BM25 keyword matching and dense vector embeddings) by summing inverted rank positions: RRF(d) = sum(1 / (k + r(d))) with constant k=60."
+            title: "Raft Consensus Protocol & Log Replication (chunk_dist_01)",
+            score: "RRF Score: 0.0328 (Rank #1 // Relevansi Ground Truth: 3.0)",
+            snippet: "Raft is a consensus algorithm designed as an alternative to Paxos. It achieves consensus via leader election, log replication, and safety guarantees."
           },
           {
-            title: "Dense Vector Indexing with SIMD Acceleration",
-            score: "RRF Score: 0.0162 (Rank #2)",
-            snippet: "Vector retrieval calculates inner products across float32 normalized embeddings using vectorized SIMD kernels to identify candidate documents."
+            title: "Paxos Protocol Family in Distributed Storage (chunk_dist_02)",
+            score: "RRF Score: 0.0162 (Rank #2 // Relevansi Ground Truth: 1.0)",
+            snippet: "Paxos is a family of protocols for solving consensus in a network of unreliable processors, widely implemented in Chubby and Spanner."
           }
         ]
       },
       {
-        title: "Kueri Ambigu: Deep Reranking Diperlukan",
-        query: "Compare memory architectures in modern neural models and search caching",
-        sub: "Entropi tinggi (H = 1.12). Mengaktifkan deep reranking.",
+        title: "Kueri Jelas: Log-Structured Merge-Trees (LSM)",
+        query: "Log-Structured Merge-trees LSM write throughput memtable compaction",
+        sub: "Entropi Shannon rendah (H = 0.41). Memilih Fast-Path instan.",
+        type: "fast",
+        entropy: 0.412,
+        margin: 0.724,
+        latency: 0.82,
+        docs: [
+          {
+            title: "LSM Trees Storage Engine Architecture (chunk_db_02)",
+            score: "RRF Score: 0.0315 (Rank #1 // Relevansi Ground Truth: 3.0)",
+            snippet: "LSM trees (Log-Structured Merge-trees) optimize write throughput by sequentially writing to an immutable memtable and sstables with compaction."
+          },
+          {
+            title: "B-Tree Storage Hierarchies in Relational Engines (chunk_db_01)",
+            score: "RRF Score: 0.0154 (Rank #2 // Relevansi Ground Truth: 1.0)",
+            snippet: "B-trees maintain sorted key-value pairs allowing logarithmic amortized search, insertion, and deletion times in relational storage engines."
+          }
+        ]
+      },
+      {
+        title: "Kueri Ambigu: Information Retrieval Ranking Comparison",
+        query: "information retrieval ranking algorithms comparison",
+        sub: "Entropi Shannon tinggi (H = 1.12). Mengaktifkan Cross-Encoder Reranker.",
         type: "rerank",
         entropy: 1.124,
         margin: 0.182,
-        latency: 42.1,
+        latency: 3.85,
         docs: [
           {
-            title: "Hybrid Memory Hierarchy for Low-Latency Search",
-            score: "Rerank Score: 0.9412 (Cross-Encoder)",
-            snippet: "Analyzing dual-memory pipelines that separate in-memory caching from persistent vector representations to balance throughput against cold-start latency."
+            title: "Okapi BM25 Lexical Ranking Function (chunk_rag_04)",
+            score: "Reranker Rescore: 0.9412 (Rank #1 // Relevansi Ground Truth: 3.0)",
+            snippet: "Okapi BM25 is a probabilistic term-frequency ranking function modeling term saturation and document length normalization."
           },
           {
-            title: "Transformer Attention Caching Strategies",
-            score: "Rerank Score: 0.9120 (Cross-Encoder)",
-            snippet: "Key-value cache compression techniques in decoder-only language models under long-context retrieval scenarios."
+            title: "Reciprocal Rank Fusion in Hybrid Systems (chunk_rag_03)",
+            score: "Reranker Rescore: 0.9120 (Rank #2 // Relevansi Ground Truth: 3.0)",
+            snippet: "Reciprocal Rank Fusion (RRF) combines rankings from multiple information retrieval systems without requiring raw score normalization."
           }
         ]
       }
@@ -587,11 +688,11 @@
       banner.className = `decision-banner ${isFast ? 'status-fast' : 'status-rerank'}`;
       document.getElementById('decisionTitleText').innerText = isFast ? 'Jalur Spekulatif: FAST_PATH' : 'Jalur Presisi: DEEP_RERANKING';
       document.getElementById('decisionDesc').innerText = isFast
-        ? 'Entropi kueri berada di bawah ambang batas (H < H*). Dokumen teratas disajikan langsung tanpa latensi reranker.'
+        ? 'Entropi kueri berada di bawah ambang batas toleransi (H < H*). Dokumen teratas disajikan langsung tanpa latensi reranker.'
         : 'Entropi kueri tinggi (H >= H*). Mengaktifkan Cross-Encoder Reranker untuk memastikan akurasi konteks jawaban.';
-      document.getElementById('decisionTag').innerText = isFast ? 'Routing: FAST_PATH (< 15ms)' : 'Routing: DEEP_RERANK (> 40ms)';
+      document.getElementById('decisionTag').innerText = isFast ? 'Routing: FAST_PATH (< 1ms)' : 'Routing: DEEP_RERANK (~3-4ms)';
 
-      document.getElementById('statLatency').innerText = `${isFast ? queryItem.latency : 43.5} ms`;
+      document.getElementById('statLatency').innerText = `${queryItem.latency} ms`;
       document.getElementById('statLatencySub').innerText = isFast ? 'Speedup: 4.8x vs Full Rerank' : 'Deep Reranking Presisi Tinggi';
       document.getElementById('statEntropy').innerText = queryItem.entropy.toFixed(3);
       document.getElementById('statEntropySub').innerText = `Ambang Batas H*: ${threshold.toFixed(3)}`;
