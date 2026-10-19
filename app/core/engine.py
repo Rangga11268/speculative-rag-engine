@@ -105,11 +105,16 @@ class SpecRAGEngine:
         # 1. Persist to storage repository
         count = self.storage_repo.add_chunks(prepared_chunks)
 
-        # 2. Add to dense vector index
-        self.vector_index.add(vec_ids, vectors)
+        try:
+            # 2. Add to dense vector index
+            self.vector_index.add(vec_ids, vectors)
 
-        # 3. Add to BM25 index
-        self.bm25_index.add(vec_ids, texts)
+            # 3. Add to BM25 index
+            self.bm25_index.add(vec_ids, texts)
+        except Exception as e:
+            # Atomic reconciliation: If vector or BM25 index fails, rebuild indices from storage
+            self.rebuild_indices_from_storage()
+            raise RuntimeError(f"Ingestion failed during in-memory index updates; indices reconciled from storage: {e}") from e
 
         # Invalidate cache on corpus mutation to prevent serving stale results
         if count > 0:
@@ -117,6 +122,32 @@ class SpecRAGEngine:
             self.cache.invalidate(namespace=self.namespace)
 
         return count
+
+    def rebuild_indices_from_storage(self) -> int:
+        """Reconcile in-memory dense vector and BM25 indices from persistent storage."""
+        all_chunks = self.storage_repo.get_all_chunks()
+        if not all_chunks:
+            self.vector_index.clear()
+            self.bm25_index.clear()
+            return 0
+
+        vec_ids = [c.id for c in all_chunks]
+        vectors = [
+            c.embedding if (c.embedding is not None and len(c.embedding) == self.settings.VECTOR_DIMENSION)
+            else self.embedder.embed_text(c.text)
+            for c in all_chunks
+        ]
+        texts = [c.text for c in all_chunks]
+
+        self.vector_index.clear()
+        self.vector_index.add(vec_ids, vectors)
+
+        self.bm25_index.clear()
+        self.bm25_index.add(vec_ids, texts)
+
+        self.index_version += 1
+        self.cache.invalidate(namespace=self.namespace)
+        return len(all_chunks)
 
     async def query(self, request: QueryRequest) -> QueryResponse:
         """Execute end-to-end asynchronous query pipeline."""

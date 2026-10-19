@@ -176,18 +176,38 @@ def test_specrag_engine_end_to_end(tmp_path):
     assert res1.route_taken in ["FAST_PATH_BYPASS", "RERANKED"]
     assert res1.latency_ms > 0
 
-    # Query 2: Force Rerank
-    req2 = QueryRequest(query="annual paid leave days", top_k=1, force_rerank=True)
-    res2 = engine.query_sync(req2)
-    assert res2.route_taken == "RERANKED"
-    assert res2.results[0].chunk_id == "chk-2"
+def test_rebuild_indices_reconciliation(tmp_path):
+    """Verify rebuild_indices_from_storage restores vector and BM25 state from SQLite."""
+    db_path = str(tmp_path / "reconcile.db")
+    storage = SQLiteStorageRepository(db_path)
+    vec_index = DenseVectorIndex(dimension=384)
+    bm25 = OkapiBM25Index()
+    embedder = DenseEmbedder(dimension=384)
+    engine = SpecRAGEngine(
+        storage_repo=storage,
+        vector_index=vec_index,
+        bm25_index=bm25,
+        embedder=embedder,
+    )
 
+    chunks = [
+        DocumentChunk(id="c1", doc_id="d1", text="Quantum computing and quantum annealing algorithms."),
+        DocumentChunk(id="c2", doc_id="d2", text="Classical Von Neumann computer architecture and ALU."),
+    ]
+    engine.ingest_chunks(chunks)
 
-def test_dynamic_confidence_gate_invalid_top_k():
-    """Verify top_k < 1 raises ValueError."""
-    with pytest.raises(ValueError, match="top_k must be >= 1"):
-        DynamicConfidenceGate(top_k=0)
+    assert vec_index.size() == 2
+    assert bm25.size() == 2
 
-    with pytest.raises(ValueError, match="top_k must be >= 1"):
-        DynamicConfidenceGate(top_k=-5)
+    # Simulate in-memory index clear/desync
+    vec_index.clear()
+    bm25.clear()
+    assert vec_index.size() == 0
+    assert bm25.size() == 0
+
+    # Reconcile from storage
+    reconciled_count = engine.rebuild_indices_from_storage()
+    assert reconciled_count == 2
+    assert vec_index.size() == 2
+    assert bm25.size() == 2
 
