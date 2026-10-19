@@ -1,8 +1,23 @@
 """Configuration module for SpecRAG using Pydantic Settings."""
 
 from functools import lru_cache
-from typing import Literal
+import logging
+from typing import Literal, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+INSECURE_SECRETS = {
+    "admin-secret",
+    "admin",
+    "secret",
+    "default",
+    "changeme",
+    "password",
+    "123456",
+    "test",
+    "secret-key",
+}
 
 
 class Settings(BaseSettings):
@@ -18,7 +33,13 @@ class Settings(BaseSettings):
     APP_NAME: str = "SpecRAG"
     API_PREFIX: str = "/api/v1"
     DEBUG: bool = False
-    ADMIN_API_KEY: str = "admin-secret"
+    ENVIRONMENT: Literal["development", "test", "production"] = "development"
+
+    # Cryptographic Authentication & RBAC Secrets
+    ADMIN_API_KEY: Optional[str] = None
+    SECRET_KEY: Optional[str] = None
+    # If True, permits unauthenticated requests defaulting to 'default' namespace in development only
+    ALLOW_UNAUTHENTICATED_DEV: bool = True
 
     # Storage Repository Settings
     STORAGE_BACKEND: Literal["sqlite", "postgres"] = "sqlite"
@@ -55,8 +76,23 @@ class Settings(BaseSettings):
     CACHE_MAX_ENTRIES: int = 2000
     CACHE_TTL_SECONDS: int = 3600
 
+    def validate_production_security(self) -> None:
+        """Enforce strict cryptographic secret standards in production environment."""
+        if self.ENVIRONMENT == "production":
+            if not self.ADMIN_API_KEY or self.ADMIN_API_KEY.strip().lower() in INSECURE_SECRETS or len(self.ADMIN_API_KEY.strip()) < 16:
+                raise ValueError(
+                    "CRITICAL SECURITY: Insecure or default ADMIN_API_KEY in production. "
+                    "Configure a cryptographically secure key with at least 16 characters."
+                )
+            if not self.SECRET_KEY or self.SECRET_KEY.strip().lower() in INSECURE_SECRETS or len(self.SECRET_KEY.strip()) < 16:
+                raise ValueError(
+                    "CRITICAL SECURITY: Insecure or default SECRET_KEY in production. "
+                    "Configure a cryptographically secure key with at least 16 characters."
+                )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Return cached singleton application settings."""
-    return Settings()
+    settings = Settings()
+    return settings

@@ -41,7 +41,7 @@ async def query_pipeline(
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied: Cannot query outside authenticated tenant namespace.",
+            detail=f"Access denied: Tenant '{tenant.tenant_id}' cannot query foreign namespace '{request.namespace}'.",
         )
     request.namespace = (
         tenant.tenant_id
@@ -91,7 +91,7 @@ async def ingest_documents(
         if chunk.namespace and chunk.namespace != tenant.tenant_id and chunk.namespace != "default" and not tenant.is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: Cannot ingest chunks for another tenant namespace.",
+                detail=f"Access denied: Tenant '{tenant.tenant_id}' cannot ingest into foreign namespace '{chunk.namespace}'.",
             )
         chunk.namespace = tenant.tenant_id
 
@@ -127,12 +127,18 @@ async def get_cache_stats(
     tenant: TenantContext = Depends(get_current_tenant),
     engine: SpecRAGEngine = Depends(get_engine),
 ) -> Dict[str, Any]:
-    """Retrieve cache diagnostic statistics (scoped to tenant unless admin)."""
-    stats = engine.cache.stats()
-    if not tenant.is_admin:
-        stats["tenant_namespace"] = tenant.tenant_id
-        stats["tenant_size"] = engine.cache.size(namespace=tenant.tenant_id)
-    return stats
+    """Retrieve cache diagnostic statistics (scoped strictly to tenant unless admin)."""
+    if tenant.is_admin:
+        return engine.cache.stats()
+
+    # Non-admin tenant ONLY receives metrics scoped to their own tenant/namespace
+    # Zero cross-tenant data leakage: do NOT return global hits, misses, or other tenants' sizes
+    return {
+        "tenant_id": tenant.tenant_id,
+        "tenant_entries": engine.cache.size(namespace=tenant.tenant_id),
+        "backend": "redis" if getattr(engine.cache, "redis_client", None) else "memory",
+        "status": "active",
+    }
 
 
 @router.delete(

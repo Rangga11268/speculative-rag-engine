@@ -17,6 +17,7 @@ from app.cache.memory import MemorySemanticCache
 from app.cache.redis_adapter import RedisSemanticCache
 from app.config import Settings
 from app.core.engine import SpecRAGEngine
+from app.core.security import get_active_admin_key
 from app.main import app
 from app.storage.sqlite import SQLiteStorageRepository
 from app.storage.vector_store import DenseVectorIndex
@@ -281,11 +282,17 @@ def test_fastapi_endpoints(tmp_path):
     assert q_data2["cache_hit"] is True
     assert q_data2["route_taken"] == "CACHE_HIT"
 
-    # 5. Cache stats
-    res_stats = client.get("/api/v1/cache/stats")
-    assert res_stats.status_code == 200
-    stats_data = res_stats.json()
-    assert stats_data["hits"] >= 1
+    # 5. Cache stats: admin view receives global hits, tenant view receives isolated entries
+    res_stats_admin = client.get("/api/v1/cache/stats", headers={"X-Admin-Key": get_active_admin_key()})
+    assert res_stats_admin.status_code == 200
+    stats_data_admin = res_stats_admin.json()
+    assert stats_data_admin["hits"] >= 1
+
+    res_stats_tenant = client.get("/api/v1/cache/stats")
+    assert res_stats_tenant.status_code == 200
+    stats_data_tenant = res_stats_tenant.json()
+    assert stats_data_tenant["tenant_entries"] >= 1
+    assert "hits" not in stats_data_tenant
 
     # 6. Gating config
     res_gating = client.get("/api/v1/gating/config")

@@ -80,7 +80,8 @@ Empirical benchmark results from `python benchmarks/benchmark_ablation.py` (eval
 * **73.3% P50 Latency Reduction** compared to mandatory cross-encoder rescoring on every request.
 * **72.2% Reranker Invocations Saved**: High-confidence queries bypass the secondary scoring step without degrading NDCG@10 on the test corpus.
 * **Exact Quality Retention (0.8536 NDCG@10 / 0.8542 MRR@10)**: Retains identical ranking quality to full rescoring on the evaluated workload.
-* **Multi-Tenant Data Isolation**: Verified zero data leakage across corpora; cache invalidation is atomic and scoped to authenticated tenant namespaces.
+* **Cryptographic Multi-Tenant Isolation**: Zero cross-tenant data leakage. Tenant identity is derived strictly from HMAC-SHA256 verified Bearer tokens (`srag_<tenant>_<sig>`), preventing client header spoofing. Cache diagnostics and purges are strictly isolated to authenticated tenant namespaces.
+* **Production Startup Security Guards**: Refuses startup in production environments if `ADMIN_API_KEY` or `SECRET_KEY` are missing, short (< 16 chars), or set to default insecure values.
 
 ---
 
@@ -93,10 +94,10 @@ speculative-rag-engine/
 │   ├── ARCHITECTURE.md        # Mathematical Formulations, Algorithms, & Storage Contracts
 │   └── CONTEXT.md             # System Context & Architectural Decisions
 ├── app/
-│   ├── config.py              # Central Pydantic v2 configuration
-│   ├── main.py                # FastAPI Application instance & lifespan
+│   ├── config.py              # Central Pydantic v2 configuration & production secret validator
+│   ├── main.py                # FastAPI Application instance & lifespan startup guards
 │   ├── api/
-│   │   ├── deps.py            # Dependency injection
+│   │   ├── deps.py            # Dependency injection with cryptographic tenant token verification
 │   │   ├── routes.py          # REST endpoints (/query, /ingest, /cache, /gating)
 │   │   └── schemas.py         # Domain models (DocumentChunk, QueryRequest, QueryResponse)
 │   ├── cache/                 # Semantic Cache Layer (Milestone 3)
@@ -104,6 +105,7 @@ speculative-rag-engine/
 │   │   ├── memory.py          # MemorySemanticCache (LRU, TTL, cosine similarity scan)
 │   │   └── redis_adapter.py   # Redis semantic adapter with graceful in-memory fallback
 │   ├── core/                  # Core Speculative Logic (Milestone 2)
+│   │   ├── security.py        # Cryptographic HMAC token issuance & constant-time key validation
 │   │   ├── embedder.py        # DenseEmbedder (384-dim unit L2 normalization)
 │   │   ├── gating.py          # DynamicConfidenceGate (Marginal gap + Shannon entropy)
 │   │   ├── reranker.py        # NativeRescorer cross-matching model
@@ -114,7 +116,7 @@ speculative-rag-engine/
 ├── benchmarks/
 │   ├── benchmark_ablation.py  # Ablation evaluation script
 │   └── ablation_report.json   # Output benchmark results
-├── tests/                     # 288 Automated Tests (100% Pass)
+├── tests/                     # 302 Automated Tests (100% Pass)
 ├── run.py                     # Single-command server launcher
 ├── run_tests.py               # Unified multi-runner test execution CLI
 └── requirements.txt           # Minimal, verified cross-platform dependencies

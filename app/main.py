@@ -15,6 +15,7 @@ from app.core.engine import SpecRAGEngine
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager to initialize and cleanup engine resources."""
     settings = get_settings()
+    settings.validate_production_security()
     engine = SpecRAGEngine(settings=settings)
     set_engine(engine)
     yield
