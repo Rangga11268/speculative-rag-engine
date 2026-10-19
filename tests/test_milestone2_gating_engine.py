@@ -171,3 +171,13 @@ def test_specrag_engine_end_to_end(tmp_path):
     res2 = engine.query_sync(req2)
     assert res2.route_taken == "RERANKED"
     assert res2.results[0].chunk_id == "chk-2"
+
+
+def test_dynamic_confidence_gate_invalid_top_k():
+    """Verify top_k < 1 raises ValueError."""
+    with pytest.raises(ValueError, match="top_k must be >= 1"):
+        DynamicConfidenceGate(top_k=0)
+
+    with pytest.raises(ValueError, match="top_k must be >= 1"):
+        DynamicConfidenceGate(top_k=-5)
+

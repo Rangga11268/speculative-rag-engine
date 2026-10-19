@@ -67,6 +67,8 @@ class DynamicConfidenceGate:
 
         if self.tau <= 0.0:
             raise ValueError(f"Temperature tau must be strictly positive, got {self.tau}")
+        if self.top_k < 1:
+            raise ValueError(f"top_k must be >= 1, got {self.top_k}")
 
     def evaluate(
         self,
