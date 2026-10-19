@@ -65,8 +65,14 @@ class DynamicConfidenceGate:
         self.theta_min = float(theta_min if theta_min is not None else settings.GATING_THETA_MIN)
         self.top_k = int(top_k if top_k is not None else settings.GATING_TOP_K)
 
-        if self.tau <= 0.0:
-            raise ValueError(f"Temperature tau must be strictly positive, got {self.tau}")
+        if not math.isfinite(self.tau) or self.tau <= 0.0:
+            raise ValueError(f"Temperature tau must be strictly positive and finite, got {self.tau}")
+        if not math.isfinite(self.theta_gap) or self.theta_gap < 0.0:
+            raise ValueError(f"theta_gap must be non-negative and finite, got {self.theta_gap}")
+        if not math.isfinite(self.theta_entropy) or not (0.0 <= self.theta_entropy <= 1.0):
+            raise ValueError(f"theta_entropy must be in [0.0, 1.0] and finite, got {self.theta_entropy}")
+        if not math.isfinite(self.theta_min):
+            raise ValueError(f"theta_min must be finite, got {self.theta_min}")
         if self.top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {self.top_k}")
 
@@ -90,8 +96,8 @@ class DynamicConfidenceGate:
         raw_scores: List[float] = []
         for c in candidates[:self.top_k]:
             val = c.score if isinstance(c, RetrievedCandidate) else float(c)
-            if math.isnan(val) or math.isinf(val):
-                val = 0.0
+            if not math.isfinite(val):
+                raise ValueError(f"Retrieved candidate contains non-finite score (NaN or Inf): {val}")
             raw_scores.append(val)
 
         # Sort descending

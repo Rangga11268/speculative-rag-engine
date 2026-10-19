@@ -87,9 +87,11 @@ def test_gating_edge_cases():
     assert t_single.bypass_granted is True
     assert t_single.decision == RouteDecision.FAST_PATH_BYPASS
 
-    # Non-finite
-    t_nan = gate.evaluate([float("nan"), 0.5, float("inf")])
-    assert isinstance(t_nan.normalized_entropy, float)
+    # Non-finite scores must be rejected explicitly
+    with pytest.raises(ValueError, match="non-finite score"):
+        gate.evaluate([float("nan"), 0.5])
+    with pytest.raises(ValueError, match="non-finite score"):
+        gate.evaluate([0.5, float("inf")])
 
     # Identical scores (uniform probability distribution)
     t_identical = gate.evaluate([0.75, 0.75, 0.75, 0.75])
@@ -102,9 +104,17 @@ def test_gating_edge_cases():
     assert t_neg.bypass_granted is False
     assert t_neg.decision == RouteDecision.RERANK_RELEVANCE_FLOOR
 
-    # Zero tau validation error
-    with pytest.raises(ValueError, match="strictly positive"):
+    # Configuration validations
+    with pytest.raises(ValueError, match="strictly positive and finite"):
         DynamicConfidenceGate(tau=0.0)
+    with pytest.raises(ValueError, match="strictly positive and finite"):
+        DynamicConfidenceGate(tau=float("nan"))
+    with pytest.raises(ValueError, match="theta_gap must be non-negative"):
+        DynamicConfidenceGate(theta_gap=-0.1)
+    with pytest.raises(ValueError, match="theta_entropy must be in \\[0.0, 1.0\\]"):
+        DynamicConfidenceGate(theta_entropy=1.5)
+    with pytest.raises(ValueError, match="theta_min must be finite"):
+        DynamicConfidenceGate(theta_min=float("inf"))
 
 
 def test_native_rescorer():
