@@ -71,6 +71,16 @@ def calculate_recall(retrieved_ids: List[str], ground_truth_ids: Set[str], k: in
     return hits / float(len(ground_truth_ids))
 
 
+def calculate_mrr(retrieved_ids: List[str], ground_truth_ids: Set[str], k: int = 10) -> float:
+    """Calculate Mean Reciprocal Rank at rank k."""
+    if not ground_truth_ids:
+        return 0.0
+    for i, cid in enumerate(retrieved_ids[:k]):
+        if cid in ground_truth_ids:
+            return 1.0 / (i + 1)
+    return 0.0
+
+
 # -----------------------------------------------------------------------------
 # Synthetic Benchmark Corpus Generation
 # -----------------------------------------------------------------------------
@@ -237,11 +247,48 @@ def run_ablation_benchmarks(num_cycles: int = 5) -> Dict[str, Any]:
     }
 
     # =========================================================================
-    # Baseline 1: Vanilla Bi-Encoder (Dense Search Only, No Reranker)
+    # Baseline 1: BM25-Only (Keyword Search Baseline)
+    # =========================================================================
+    latencies_bm25: List[float] = []
+    ndcgs_bm25: List[float] = []
+    recalls_bm25: List[float] = []
+    mrrs_bm25: List[float] = []
+
+    for item in workload:
+        q_text = item["query"]
+        gt = item["ground_truth"]
+        gt_keys = set(gt.keys())
+
+        t0 = time.perf_counter()
+        bm25_hits = bm25_index.search(q_text, top_k=10)
+        retrieved_ids = [cid for cid, _ in bm25_hits]
+        latency_ms = (time.perf_counter() - t0) * 1000.0
+
+        latencies_bm25.append(latency_ms)
+        ndcgs_bm25.append(calculate_ndcg(retrieved_ids, gt, k=10))
+        recalls_bm25.append(calculate_recall(retrieved_ids, gt_keys, k=10))
+        mrrs_bm25.append(calculate_mrr(retrieved_ids, gt_keys, k=10))
+
+    results["architectures"]["BM25-Only"] = {
+        "mean_latency_ms": round(float(np.mean(latencies_bm25)), 2),
+        "p50_latency_ms": round(float(np.percentile(latencies_bm25, 50)), 2),
+        "p95_latency_ms": round(float(np.percentile(latencies_bm25, 95)), 2),
+        "p99_latency_ms": round(float(np.percentile(latencies_bm25, 99)), 2),
+        "ndcg_at_10": round(float(np.mean(ndcgs_bm25)), 4),
+        "recall_at_10": round(float(np.mean(recalls_bm25)), 4),
+        "mrr_at_10": round(float(np.mean(mrrs_bm25)), 4),
+        "rerank_calls": 0,
+        "rerank_ratio": 0.0,
+        "cache_hits": 0,
+    }
+
+    # =========================================================================
+    # Baseline 2: Vanilla Bi-Encoder (Dense Search Only, No Reranker)
     # =========================================================================
     latencies_bi: List[float] = []
     ndcgs_bi: List[float] = []
     recalls_bi: List[float] = []
+    mrrs_bi: List[float] = []
 
     for item in workload:
         q_text = item["query"]
@@ -257,6 +304,7 @@ def run_ablation_benchmarks(num_cycles: int = 5) -> Dict[str, Any]:
         latencies_bi.append(latency_ms)
         ndcgs_bi.append(calculate_ndcg(retrieved_ids, gt, k=10))
         recalls_bi.append(calculate_recall(retrieved_ids, gt_keys, k=10))
+        mrrs_bi.append(calculate_mrr(retrieved_ids, gt_keys, k=10))
 
     results["architectures"]["Vanilla Bi-Encoder"] = {
         "mean_latency_ms": round(float(np.mean(latencies_bi)), 2),
@@ -265,6 +313,48 @@ def run_ablation_benchmarks(num_cycles: int = 5) -> Dict[str, Any]:
         "p99_latency_ms": round(float(np.percentile(latencies_bi, 99)), 2),
         "ndcg_at_10": round(float(np.mean(ndcgs_bi)), 4),
         "recall_at_10": round(float(np.mean(recalls_bi)), 4),
+        "mrr_at_10": round(float(np.mean(mrrs_bi)), 4),
+        "rerank_calls": 0,
+        "rerank_ratio": 0.0,
+        "cache_hits": 0,
+    }
+
+    # =========================================================================
+    # Baseline 3: Hybrid Retrieval (Dense + BM25 via RRF, No Reranker)
+    # =========================================================================
+    latencies_hyb: List[float] = []
+    ndcgs_hyb: List[float] = []
+    recalls_hyb: List[float] = []
+    mrrs_hyb: List[float] = []
+
+    for item in workload:
+        q_text = item["query"]
+        gt = item["ground_truth"]
+        gt_keys = set(gt.keys())
+
+        t0 = time.perf_counter()
+        q_vec = embedder.embed_text(q_text)
+        candidates = hybrid_retriever.retrieve_sync(
+            query_text=q_text,
+            query_vector=q_vec,
+            top_k=10,
+        )
+        retrieved_ids = [c.chunk_id for c in candidates]
+        latency_ms = (time.perf_counter() - t0) * 1000.0
+
+        latencies_hyb.append(latency_ms)
+        ndcgs_hyb.append(calculate_ndcg(retrieved_ids, gt, k=10))
+        recalls_hyb.append(calculate_recall(retrieved_ids, gt_keys, k=10))
+        mrrs_hyb.append(calculate_mrr(retrieved_ids, gt_keys, k=10))
+
+    results["architectures"]["Hybrid (Dense+BM25)"] = {
+        "mean_latency_ms": round(float(np.mean(latencies_hyb)), 2),
+        "p50_latency_ms": round(float(np.percentile(latencies_hyb, 50)), 2),
+        "p95_latency_ms": round(float(np.percentile(latencies_hyb, 95)), 2),
+        "p99_latency_ms": round(float(np.percentile(latencies_hyb, 99)), 2),
+        "ndcg_at_10": round(float(np.mean(ndcgs_hyb)), 4),
+        "recall_at_10": round(float(np.mean(recalls_hyb)), 4),
+        "mrr_at_10": round(float(np.mean(mrrs_hyb)), 4),
         "rerank_calls": 0,
         "rerank_ratio": 0.0,
         "cache_hits": 0,
@@ -276,6 +366,7 @@ def run_ablation_benchmarks(num_cycles: int = 5) -> Dict[str, Any]:
     latencies_full: List[float] = []
     ndcgs_full: List[float] = []
     recalls_full: List[float] = []
+    mrrs_full: List[float] = []
 
     for item in workload:
         q_text = item["query"]
@@ -302,6 +393,7 @@ def run_ablation_benchmarks(num_cycles: int = 5) -> Dict[str, Any]:
         latencies_full.append(latency_ms)
         ndcgs_full.append(calculate_ndcg(retrieved_ids, gt, k=10))
         recalls_full.append(calculate_recall(retrieved_ids, gt_keys, k=10))
+        mrrs_full.append(calculate_mrr(retrieved_ids, gt_keys, k=10))
 
     results["architectures"]["Full Cross-Encoder"] = {
         "mean_latency_ms": round(float(np.mean(latencies_full)), 2),
@@ -310,6 +402,7 @@ def run_ablation_benchmarks(num_cycles: int = 5) -> Dict[str, Any]:
         "p99_latency_ms": round(float(np.percentile(latencies_full, 99)), 2),
         "ndcg_at_10": round(float(np.mean(ndcgs_full)), 4),
         "recall_at_10": round(float(np.mean(recalls_full)), 4),
+        "mrr_at_10": round(float(np.mean(mrrs_full)), 4),
         "rerank_calls": len(workload),
         "rerank_ratio": 1.0,
         "cache_hits": 0,
@@ -321,6 +414,7 @@ def run_ablation_benchmarks(num_cycles: int = 5) -> Dict[str, Any]:
     latencies_spec: List[float] = []
     ndcgs_spec: List[float] = []
     recalls_spec: List[float] = []
+    mrrs_spec: List[float] = []
     routes_count = {"CACHE_HIT": 0, "FAST_PATH_BYPASS": 0, "RERANKED": 0}
 
     for item in workload:
@@ -335,6 +429,7 @@ def run_ablation_benchmarks(num_cycles: int = 5) -> Dict[str, Any]:
         retrieved_ids = [c.chunk_id for c in resp.results]
         ndcgs_spec.append(calculate_ndcg(retrieved_ids, gt, k=10))
         recalls_spec.append(calculate_recall(retrieved_ids, gt_keys, k=10))
+        mrrs_spec.append(calculate_mrr(retrieved_ids, gt_keys, k=10))
 
         route = resp.route_taken
         routes_count[route] = routes_count.get(route, 0) + 1
@@ -350,6 +445,7 @@ def run_ablation_benchmarks(num_cycles: int = 5) -> Dict[str, Any]:
         "p99_latency_ms": round(float(np.percentile(latencies_spec, 99)), 2),
         "ndcg_at_10": round(float(np.mean(ndcgs_spec)), 4),
         "recall_at_10": round(float(np.mean(recalls_spec)), 4),
+        "mrr_at_10": round(float(np.mean(mrrs_spec)), 4),
         "rerank_calls": rerank_calls,
         "rerank_ratio": rerank_ratio,
         "cache_hits": routes_count.get("CACHE_HIT", 0),
@@ -371,25 +467,26 @@ def run_ablation_benchmarks(num_cycles: int = 5) -> Dict[str, Any]:
 def print_comparison_table(results: Dict[str, Any]) -> None:
     """Print clean formatted markdown and terminal comparison table."""
     archs = results["architectures"]
-    print("\n" + "=" * 90)
-    print("                     SPECRAG ABLATION BENCHMARK RESULTS")
-    print("=" * 90)
-    header = f"{'Architecture':<22} | {'P50 (ms)':<9} | {'P95 (ms)':<9} | {'P99 (ms)':<9} | {'NDCG@10':<9} | {'Recall@10':<9} | {'Rerank %':<8}"
+    print("\n" + "=" * 102)
+    print("                              SPECRAG ABLATION BENCHMARK RESULTS")
+    print("=" * 102)
+    header = f"{'Architecture':<22} | {'P50 (ms)':<9} | {'P95 (ms)':<9} | {'NDCG@10':<9} | {'Recall@10':<9} | {'MRR@10':<8} | {'Rerank %':<8}"
     print(header)
-    print("-" * 90)
+    print("-" * 102)
 
     for name, data in archs.items():
+        mrr_val = data.get('mrr_at_10', 0.0)
         row = (
             f"{name:<22} | "
             f"{data['p50_latency_ms']:<9.2f} | "
             f"{data['p95_latency_ms']:<9.2f} | "
-            f"{data['p99_latency_ms']:<9.2f} | "
             f"{data['ndcg_at_10']:<9.4f} | "
             f"{data['recall_at_10']:<9.4f} | "
+            f"{mrr_val:<8.4f} | "
             f"{data['rerank_ratio'] * 100:<7.1f}%"
         )
         print(row)
-    print("=" * 90)
+    print("=" * 102)
 
     spec = archs["SpecRAG (Ours)"]
     full = archs["Full Cross-Encoder"]

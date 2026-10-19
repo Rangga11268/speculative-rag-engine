@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "SpecRAG"
     API_PREFIX: str = "/api/v1"
     DEBUG: bool = False
+    ADMIN_API_KEY: str = "admin-secret"
 
     # Storage Repository Settings
     STORAGE_BACKEND: Literal["sqlite", "postgres"] = "sqlite"

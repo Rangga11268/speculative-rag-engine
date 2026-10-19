@@ -1,9 +1,10 @@
 """FastAPI router endpoints for SpecRAG."""
 
+import logging
 from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.deps import get_engine
+from app.api.deps import TenantContext, get_current_tenant, get_engine
 from app.api.schemas import (
     IngestRequest,
     IngestResponse,
@@ -12,6 +13,7 @@ from app.api.schemas import (
 )
 from app.core.engine import SpecRAGEngine
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -26,15 +28,48 @@ router = APIRouter()
 )
 async def query_pipeline(
     request: QueryRequest,
+    tenant: TenantContext = Depends(get_current_tenant),
     engine: SpecRAGEngine = Depends(get_engine),
 ) -> QueryResponse:
-    """Handle speculative search query."""
+    """Handle speculative search query with verified tenant isolation."""
+    # Enforce tenant isolation: clients cannot spoof namespaces
+    if (
+        request.namespace
+        and request.namespace != "default"
+        and request.namespace != tenant.tenant_id
+        and not tenant.is_admin
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Cannot query outside authenticated tenant namespace.",
+        )
+    request.namespace = (
+        tenant.tenant_id
+        if not tenant.is_admin
+        else (request.namespace if request.namespace != "default" else tenant.tenant_id)
+    )
+
     try:
         return await engine.query(request)
-    except Exception as e:
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("Validation error during query execution: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid query request parameters.",
+        )
+    except PermissionError as e:
+        logger.warning("Permission denied during query execution: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to requested resource.",
+        )
+    except Exception:
+        logger.exception("Internal error during query execution.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Query execution failed: {str(e)}",
+            detail="An internal server error occurred.",
         )
 
 
@@ -47,9 +82,19 @@ async def query_pipeline(
 )
 async def ingest_documents(
     request: IngestRequest,
+    tenant: TenantContext = Depends(get_current_tenant),
     engine: SpecRAGEngine = Depends(get_engine),
 ) -> IngestResponse:
-    """Ingest document chunks into storage and indices."""
+    """Ingest document chunks into storage and indices with verified tenant isolation."""
+    # Enforce tenant authorization: clients cannot ingest into other tenants' corpora
+    for chunk in request.chunks:
+        if chunk.namespace and chunk.namespace != tenant.tenant_id and chunk.namespace != "default" and not tenant.is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: Cannot ingest chunks for another tenant namespace.",
+            )
+        chunk.namespace = tenant.tenant_id
+
     try:
         chunks = [c.to_chunk() for c in request.chunks]
         count = engine.ingest_chunks(chunks)
@@ -57,10 +102,19 @@ async def ingest_documents(
             count=count,
             message=f"Successfully ingested {count} chunk(s).",
         )
-    except Exception as e:
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("Validation error during chunk ingestion: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid chunk ingestion payload.",
+        )
+    except Exception:
+        logger.exception("Internal error during chunk ingestion.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ingestion failed: {str(e)}",
+            detail="An internal server error occurred during ingestion.",
         )
 
 
@@ -70,10 +124,15 @@ async def ingest_documents(
     summary="Get semantic cache statistics",
 )
 async def get_cache_stats(
+    tenant: TenantContext = Depends(get_current_tenant),
     engine: SpecRAGEngine = Depends(get_engine),
 ) -> Dict[str, Any]:
-    """Retrieve cache diagnostic statistics (hits, misses, hit rate, size)."""
-    return engine.cache.stats()
+    """Retrieve cache diagnostic statistics (scoped to tenant unless admin)."""
+    stats = engine.cache.stats()
+    if not tenant.is_admin:
+        stats["tenant_namespace"] = tenant.tenant_id
+        stats["tenant_size"] = engine.cache.size(namespace=tenant.tenant_id)
+    return stats
 
 
 @router.delete(
@@ -81,11 +140,19 @@ async def get_cache_stats(
     summary="Clear semantic cache",
 )
 async def clear_cache(
+    tenant: TenantContext = Depends(get_current_tenant),
     engine: SpecRAGEngine = Depends(get_engine),
 ) -> Dict[str, str]:
-    """Purge all entries from the semantic cache."""
-    engine.cache.clear()
-    return {"status": "success", "message": "Semantic cache purged."}
+    """Purge semantic cache entries (scoped to tenant unless admin)."""
+    if tenant.is_admin:
+        engine.cache.clear()
+        return {"status": "success", "message": "Semantic cache purged globally by admin."}
+    else:
+        engine.cache.clear(namespace=tenant.tenant_id)
+        return {
+            "status": "success",
+            "message": f"Semantic cache purged for tenant '{tenant.tenant_id}'.",
+        }
 
 
 @router.get(
@@ -94,6 +161,7 @@ async def clear_cache(
     summary="Get dynamic gating parameters",
 )
 async def get_gating_config(
+    tenant: TenantContext = Depends(get_current_tenant),
     engine: SpecRAGEngine = Depends(get_engine),
 ) -> Dict[str, Any]:
     """Retrieve active entropy gate configuration."""

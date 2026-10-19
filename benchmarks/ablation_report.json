@@ -1,41 +1,68 @@
 {
-  "workload_size": 120,
+  "workload_size": 36,
   "corpus_size": 20,
   "architectures": {
+    "BM25-Only": {
+      "mean_latency_ms": 0.03,
+      "p50_latency_ms": 0.03,
+      "p95_latency_ms": 0.06,
+      "p99_latency_ms": 0.07,
+      "ndcg_at_10": 0.8111,
+      "recall_at_10": 0.8056,
+      "mrr_at_10": 0.8333,
+      "rerank_calls": 0,
+      "rerank_ratio": 0.0,
+      "cache_hits": 0
+    },
     "Vanilla Bi-Encoder": {
-      "mean_latency_ms": 0.68,
-      "p50_latency_ms": 0.64,
-      "p95_latency_ms": 1.0,
-      "p99_latency_ms": 1.43,
+      "mean_latency_ms": 0.38,
+      "p50_latency_ms": 0.37,
+      "p95_latency_ms": 0.51,
+      "p99_latency_ms": 0.62,
       "ndcg_at_10": 0.8279,
       "recall_at_10": 0.7778,
+      "mrr_at_10": 0.8472,
+      "rerank_calls": 0,
+      "rerank_ratio": 0.0,
+      "cache_hits": 0
+    },
+    "Hybrid (Dense+BM25)": {
+      "mean_latency_ms": 0.95,
+      "p50_latency_ms": 0.93,
+      "p95_latency_ms": 1.19,
+      "p99_latency_ms": 1.33,
+      "ndcg_at_10": 0.8506,
+      "recall_at_10": 0.8611,
+      "mrr_at_10": 0.8611,
       "rerank_calls": 0,
       "rerank_ratio": 0.0,
       "cache_hits": 0
     },
     "Full Cross-Encoder": {
-      "mean_latency_ms": 2.17,
-      "p50_latency_ms": 2.03,
-      "p95_latency_ms": 3.05,
-      "p99_latency_ms": 3.83,
+      "mean_latency_ms": 1.72,
+      "p50_latency_ms": 1.65,
+      "p95_latency_ms": 2.06,
+      "p99_latency_ms": 2.66,
       "ndcg_at_10": 0.8536,
       "recall_at_10": 0.8611,
-      "rerank_calls": 120,
+      "mrr_at_10": 0.8542,
+      "rerank_calls": 36,
       "rerank_ratio": 1.0,
       "cache_hits": 0
     },
     "SpecRAG (Ours)": {
-      "mean_latency_ms": 1.14,
-      "p50_latency_ms": 0.74,
-      "p95_latency_ms": 4.51,
-      "p99_latency_ms": 5.05,
+      "mean_latency_ms": 1.76,
+      "p50_latency_ms": 0.44,
+      "p95_latency_ms": 5.07,
+      "p99_latency_ms": 9.61,
       "ndcg_at_10": 0.8536,
       "recall_at_10": 0.8611,
+      "mrr_at_10": 0.8542,
       "rerank_calls": 10,
-      "rerank_ratio": 0.0833,
-      "cache_hits": 110,
+      "rerank_ratio": 0.2778,
+      "cache_hits": 26,
       "fast_path_bypasses": 0,
-      "compute_cost_reduction_pct": 91.7
+      "compute_cost_reduction_pct": 72.2
     }
   }
 }
