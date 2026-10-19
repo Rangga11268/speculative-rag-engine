@@ -1,7 +1,8 @@
-"""Cross-Encoder Reranker module for SpecRAG.
+"""Heuristic Cross-Scoring and Reranker module for SpecRAG.
 
 Provides deliberate deep-path rescoring for ambiguous or high-entropy queries.
-Features a native cross-matching rescorer with optional ONNX Runtime acceleration.
+Features a zero-dependency NativeRescorer (lexical/proximity heuristic on CPU)
+and an extensible BaseReranker interface for neural cross-encoder backends.
 """
 
 from abc import ABC, abstractmethod
@@ -12,7 +13,7 @@ from app.api.schemas import RetrievedCandidate
 
 
 class BaseReranker(ABC):
-    """Abstract interface for cross-encoder rerankers."""
+    """Abstract interface for candidate rescorers and neural cross-encoders."""
 
     @abstractmethod
     def rerank(
@@ -21,15 +22,18 @@ class BaseReranker(ABC):
         candidates: Sequence[RetrievedCandidate],
         top_k: int | None = None,
     ) -> List[RetrievedCandidate]:
-        """Rerank candidates based on deep cross-attention/cross-scoring."""
+        """Rerank candidates based on deep cross-scoring."""
         pass
 
 
 class NativeRescorer(BaseReranker):
-    """Zero-dependency native cross-scoring reranker.
+    """Zero-dependency heuristic cross-scoring rescorer running on CPU.
 
     Calculates exact phrase matches, positional term proximity,
-    character n-gram Jaccard overlap, and consensus weights.
+    character n-gram Jaccard overlap, and consensus rank weights.
+    
+    Note: This is a fast, deterministic CPU heuristic rescorer,
+    distinct from a heavyweight neural transformer cross-encoder (e.g. MiniLM).
     """
 
     def rerank(

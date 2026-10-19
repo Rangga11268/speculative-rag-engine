@@ -91,6 +91,21 @@ def test_gating_edge_cases():
     t_nan = gate.evaluate([float("nan"), 0.5, float("inf")])
     assert isinstance(t_nan.normalized_entropy, float)
 
+    # Identical scores (uniform probability distribution)
+    t_identical = gate.evaluate([0.75, 0.75, 0.75, 0.75])
+    assert t_identical.marginal_gap == 0.0
+    assert pytest.approx(t_identical.normalized_entropy, rel=1e-3) == 1.0
+    assert t_identical.decision in [RouteDecision.RERANK_LOW_GAP, RouteDecision.RERANK_HIGH_ENTROPY]
+
+    # Negative scores (sub-threshold, routed to floor)
+    t_neg = gate.evaluate([-0.10, -0.50, -1.20])
+    assert t_neg.bypass_granted is False
+    assert t_neg.decision == RouteDecision.RERANK_RELEVANCE_FLOOR
+
+    # Zero tau validation error
+    with pytest.raises(ValueError, match="strictly positive"):
+        DynamicConfidenceGate(tau=0.0)
+
 
 def test_native_rescorer():
     """Verify NativeRescorer elevates exact matches and token overlap."""
