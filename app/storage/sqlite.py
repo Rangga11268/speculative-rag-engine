@@ -48,14 +48,28 @@ class SQLiteStorageRepository(StorageRepository):
                         text TEXT NOT NULL,
                         metadata_json TEXT NOT NULL DEFAULT '{}',
                         embedding BLOB NOT NULL,
+                        namespace TEXT NOT NULL DEFAULT 'default',
                         created_at REAL NOT NULL
                     );
                     """
                 )
+                # Ensure backward-compatible column addition if table existed without namespace
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA table_info(specrag_chunks);")
+                columns = [col[1] for col in cursor.fetchall()]
+                if "namespace" not in columns:
+                    conn.execute("ALTER TABLE specrag_chunks ADD COLUMN namespace TEXT NOT NULL DEFAULT 'default';")
+
                 conn.execute(
                     """
                     CREATE INDEX IF NOT EXISTS idx_specrag_doc_id
                     ON specrag_chunks(doc_id);
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_specrag_namespace
+                    ON specrag_chunks(namespace);
                     """
                 )
 
@@ -78,7 +92,7 @@ class SQLiteStorageRepository(StorageRepository):
                 emb_bytes = b""
 
             meta_str = json.dumps(c.metadata, ensure_ascii=False)
-            records.append((c.id, c.doc_id, c.text, meta_str, emb_bytes, now))
+            records.append((c.id, c.doc_id, c.text, meta_str, emb_bytes, c.namespace, now))
 
         with self._lock:
             conn = self._get_connection()
@@ -86,8 +100,8 @@ class SQLiteStorageRepository(StorageRepository):
                 conn.executemany(
                     """
                     INSERT OR REPLACE INTO specrag_chunks
-                    (id, doc_id, text, metadata_json, embedding, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?);
+                    (id, doc_id, text, metadata_json, embedding, namespace, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?);
                     """,
                     records,
                 )
@@ -100,7 +114,7 @@ class SQLiteStorageRepository(StorageRepository):
             cur = conn.cursor()
             cur.execute(
                 """
-                SELECT id, doc_id, text, metadata_json, embedding
+                SELECT id, doc_id, text, metadata_json, embedding, namespace
                 FROM specrag_chunks
                 WHERE id = ?;
                 """,
@@ -127,7 +141,7 @@ class SQLiteStorageRepository(StorageRepository):
                 placeholders = ",".join("?" for _ in batch)
                 cur.execute(
                     f"""
-                    SELECT id, doc_id, text, metadata_json, embedding
+                    SELECT id, doc_id, text, metadata_json, embedding, namespace
                     FROM specrag_chunks
                     WHERE id IN ({placeholders});
                     """,
@@ -138,18 +152,29 @@ class SQLiteStorageRepository(StorageRepository):
                     results[chunk.id] = chunk
         return results
 
-    def get_all_chunks(self) -> List[DocumentChunk]:
-        """Fetch all chunks for index warming."""
+    def get_all_chunks(self, namespace: Optional[str] = None) -> List[DocumentChunk]:
+        """Fetch all chunks, optionally filtered by namespace, for index warming."""
         with self._lock:
             conn = self._get_connection()
             cur = conn.cursor()
-            cur.execute(
-                """
-                SELECT id, doc_id, text, metadata_json, embedding
-                FROM specrag_chunks
-                ORDER BY created_at ASC;
-                """
-            )
+            if namespace is not None:
+                cur.execute(
+                    """
+                    SELECT id, doc_id, text, metadata_json, embedding, namespace
+                    FROM specrag_chunks
+                    WHERE namespace = ?
+                    ORDER BY created_at ASC;
+                    """,
+                    (namespace,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id, doc_id, text, metadata_json, embedding, namespace
+                    FROM specrag_chunks
+                    ORDER BY created_at ASC;
+                    """
+                )
             rows = cur.fetchall()
             return [self._row_to_chunk(r) for r in rows]
 
@@ -208,7 +233,11 @@ class SQLiteStorageRepository(StorageRepository):
                 self._conn = None
 
     def _row_to_chunk(self, row: Tuple) -> DocumentChunk:
-        cid, doc_id, text, meta_json, emb_blob = row
+        if len(row) == 6:
+            cid, doc_id, text, meta_json, emb_blob, ns = row
+        else:
+            cid, doc_id, text, meta_json, emb_blob = row[:5]
+            ns = "default"
         meta = json.loads(meta_json) if meta_json else {}
         emb = None
         if emb_blob and len(emb_blob) > 0:
@@ -219,4 +248,5 @@ class SQLiteStorageRepository(StorageRepository):
             text=text,
             metadata=meta,
             embedding=emb,
+            namespace=ns,
         )

@@ -346,3 +346,91 @@ def test_cache_index_version_invalidation():
     cache.invalidate(namespace="default", index_version="v1")
     assert cache.get("query", vec, namespace="default", index_version="v1") is None
 
+
+def test_tenant_data_isolation_end_to_end(tmp_path):
+    """Verify that Tenant A chunks are NEVER retrieved in Tenant B queries (Dense, BM25, and Cache)."""
+    async def _run():
+        db_file = str(tmp_path / "test_tenant_isolation.db")
+        storage = SQLiteStorageRepository(db_file)
+        vector_idx = DenseVectorIndex(dimension=384)
+        engine = SpecRAGEngine(storage_repo=storage, vector_index=vector_idx)
+
+        # 1. Ingest confidential document for Tenant A
+        chunk_a = DocumentChunk(
+            id="tenant_a_doc_1",
+            doc_id="secret_a",
+            text="Confidential quarterly earnings and financial statements for Tenant Alpha.",
+            embedding=[0.05] * 384,
+            namespace="tenant_a",
+        )
+        # 2. Ingest document for Tenant B
+        chunk_b = DocumentChunk(
+            id="tenant_b_doc_1",
+            doc_id="public_b",
+            text="General marketing strategies and public roadmap for Tenant Beta.",
+            embedding=[-0.05] * 384,
+            namespace="tenant_b",
+        )
+        engine.ingest_chunks([chunk_a, chunk_b])
+
+        # 3. Query as Tenant B asking about financial statements
+        req_b = QueryRequest(
+            query="financial quarterly statements earnings",
+            top_k=5,
+            namespace="tenant_b",
+            use_cache=True,
+        )
+        resp_b = await engine.query(req_b)
+
+        # Assert Tenant A document is NEVER leaked to Tenant B
+        retrieved_ids_b = [r.chunk_id for r in resp_b.results]
+        assert "tenant_a_doc_1" not in retrieved_ids_b
+
+        # 4. Query as Tenant A asking the same query
+        req_a = QueryRequest(
+            query="financial quarterly statements earnings",
+            top_k=5,
+            namespace="tenant_a",
+            use_cache=True,
+        )
+        resp_a = await engine.query(req_a)
+        retrieved_ids_a = [r.chunk_id for r in resp_a.results]
+        assert "tenant_a_doc_1" in retrieved_ids_a
+
+        # 5. Verify caching isolation: subsequent query by Tenant B must still miss Tenant A's cached result
+        resp_b_second = await engine.query(req_b)
+        assert "tenant_a_doc_1" not in [r.chunk_id for r in resp_b_second.results]
+
+        # 6. Verify client cannot bypass server authority by sending a stale index_version
+        stale_req_a = QueryRequest(
+            query="financial quarterly statements earnings",
+            top_k=5,
+            namespace="tenant_a",
+            index_version="v0_stale",
+            use_cache=True,
+        )
+        stale_resp_a = await engine.query(stale_req_a)
+        assert stale_resp_a.cache_hit is False  # Stale version bypasses cache lookup
+
+        # 7. Ingestion of new chunk in tenant_a invalidates tenant_a cache without polluting tenant_b
+        chunk_a_update = DocumentChunk(
+            id="tenant_a_doc_2",
+            doc_id="secret_a_v2",
+            text="Updated audit report for Tenant Alpha.",
+            embedding=[0.06] * 384,
+            namespace="tenant_a",
+        )
+        engine.ingest_chunks([chunk_a_update])
+        # Engine index_version should have incremented
+        assert engine.index_version >= 2
+        # Tenant A cache must be invalidated
+        cached_after = engine.cache.get(
+            "financial quarterly statements earnings",
+            engine.embedder.embed_text("financial quarterly statements earnings"),
+            namespace="tenant_a",
+            index_version=str(engine.index_version - 1),
+        )
+        assert cached_after is None
+
+    asyncio.run(_run())
+

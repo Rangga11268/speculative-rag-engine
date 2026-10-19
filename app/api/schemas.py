@@ -17,6 +17,7 @@ class DocumentChunk:
     text: str
     metadata: Dict[str, Any] = field(default_factory=dict)
     embedding: Optional[List[float]] = None
+    namespace: str = "default"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert chunk to dictionary."""
@@ -31,6 +32,7 @@ class DocumentChunk:
             text=str(data["text"]),
             metadata=dict(data.get("metadata") or {}),
             embedding=list(data["embedding"]) if data.get("embedding") is not None else None,
+            namespace=str(data.get("namespace") or "default"),
         )
 
 
@@ -62,6 +64,7 @@ class DocumentChunkSchema(BaseModel):
     text: str = Field(..., description="Raw text content of chunk")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Arbitrary JSON metadata")
     embedding: Optional[List[float]] = Field(default=None, description="Precomputed dense embedding vector")
+    namespace: str = Field(default="default", description="Tenant or corpus namespace")
 
     def to_chunk(self) -> DocumentChunk:
         """Convert to internal DocumentChunk dataclass."""
@@ -71,6 +74,7 @@ class DocumentChunkSchema(BaseModel):
             text=self.text,
             metadata=self.metadata,
             embedding=self.embedding,
+            namespace=self.namespace,
         )
 
 

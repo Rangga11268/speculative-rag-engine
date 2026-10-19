@@ -12,6 +12,7 @@ class DenseVectorIndex:
         self.dimension = dimension
         self.doc_ids: List[str] = []
         self._id_to_idx: Dict[str, int] = {}
+        self._id_to_ns: Dict[str, str] = {}
         self.matrix: Optional[np.ndarray] = None  # Normalized float32 matrix (N, D)
         self.lock = threading.RLock()
 
@@ -25,12 +26,14 @@ class DenseVectorIndex:
         with self.lock:
             self.doc_ids.clear()
             self._id_to_idx.clear()
+            self._id_to_ns.clear()
             self.matrix = None
 
     def add(
         self,
         ids: Sequence[str],
         vectors: Union[np.ndarray, Sequence[Sequence[float]]],
+        namespaces: Optional[Union[str, Sequence[str]]] = None,
     ) -> None:
         """Add or update vector embeddings for given chunk/document IDs."""
         if not ids:
@@ -59,11 +62,21 @@ class DenseVectorIndex:
         norm_vecs = vecs / norms
 
         # Deduplicate IDs within single batch, preserving order and taking last vector
-        seen: Dict[str, np.ndarray] = {}
+        if namespaces is None:
+            ns_list = ["default"] * len(ids)
+        elif isinstance(namespaces, str):
+            ns_list = [namespaces] * len(ids)
+        else:
+            ns_list = list(namespaces)
+            if len(ns_list) != len(ids):
+                raise ValueError(f"Namespaces count mismatch: {len(ns_list)} vs {len(ids)} ids")
+
+        seen: Dict[str, Tuple[np.ndarray, str]] = {}
         for i, doc_id in enumerate(ids):
-            seen[doc_id] = norm_vecs[i]
+            seen[doc_id] = (norm_vecs[i], ns_list[i])
         dedup_ids = list(seen.keys())
-        dedup_vecs = list(seen.values())
+        dedup_vecs = [seen[did][0] for did in dedup_ids]
+        dedup_nss = [seen[did][1] for did in dedup_ids]
 
         with self.lock:
             # Check for existing IDs to handle updates cleanly
@@ -71,6 +84,7 @@ class DenseVectorIndex:
             new_vecs = []
 
             for i, doc_id in enumerate(dedup_ids):
+                self._id_to_ns[doc_id] = dedup_nss[i]
                 if doc_id in self._id_to_idx:
                     idx = self._id_to_idx[doc_id]
                     self.matrix[idx] = dedup_vecs[i]
@@ -100,6 +114,9 @@ class DenseVectorIndex:
 
             keep_mask = [did not in to_remove for did in self.doc_ids]
             self.doc_ids = [did for did in self.doc_ids if did not in to_remove]
+            for did in to_remove:
+                self._id_to_ns.pop(did, None)
+
             if self.doc_ids and self.matrix is not None:
                 self.matrix = self.matrix[keep_mask]
                 self._id_to_idx = {did: idx for idx, did in enumerate(self.doc_ids)}
@@ -112,8 +129,9 @@ class DenseVectorIndex:
         self,
         query_vector: Union[np.ndarray, Sequence[float]],
         top_k: int = 10,
+        namespace: Optional[str] = None,
     ) -> List[Tuple[str, float]]:
-        """Search top-k most similar chunks using cosine similarity."""
+        """Search top-k most similar chunks using cosine similarity, optionally filtered by namespace."""
         q = np.asarray(query_vector, dtype=np.float32).flatten()
         if q.shape[0] != self.dimension:
             raise ValueError(
@@ -126,16 +144,31 @@ class DenseVectorIndex:
             if self.matrix is None or len(self.doc_ids) == 0 or top_k <= 0:
                 return []
 
+            # Determine candidate indices matching namespace if specified
+            if namespace is not None:
+                candidate_indices = [
+                    idx for idx, did in enumerate(self.doc_ids)
+                    if self._id_to_ns.get(did, "default") == namespace
+                ]
+                if not candidate_indices:
+                    return []
+                cand_idx_arr = np.array(candidate_indices, dtype=np.intp)
+                sub_matrix = self.matrix[cand_idx_arr]
+                sub_doc_ids = [self.doc_ids[idx] for idx in candidate_indices]
+            else:
+                sub_matrix = self.matrix
+                sub_doc_ids = self.doc_ids
+
             # L2 normalize query
             norm = float(np.linalg.norm(q))
             if norm > 0.0:
                 q = q / norm
             else:
                 # If zero vector, cosine similarity is 0.0
-                return [(did, 0.0) for did in self.doc_ids[: min(top_k, len(self.doc_ids))]]
+                return [(did, 0.0) for did in sub_doc_ids[: min(top_k, len(sub_doc_ids))]]
 
             # Vectorized dot product for cosine similarity over unit vectors
-            scores = np.dot(self.matrix, q)
+            scores = np.dot(sub_matrix, q)
             k = min(top_k, len(scores))
 
             # Fast partial sort: O(N) partitioning followed by sorting only top-k
@@ -145,4 +178,4 @@ class DenseVectorIndex:
             else:
                 top_indices = np.argsort(-scores)
 
-            return [(self.doc_ids[idx], float(scores[idx])) for idx in top_indices]
+            return [(sub_doc_ids[idx], float(scores[idx])) for idx in top_indices]

@@ -94,14 +94,27 @@ class PostgresStorageRepository(StorageRepository):
                             text TEXT NOT NULL,
                             metadata_json TEXT NOT NULL DEFAULT '{}',
                             embedding BYTEA NOT NULL,
+                            namespace VARCHAR(64) NOT NULL DEFAULT 'default',
                             created_at DOUBLE PRECISION NOT NULL
                         );
                         """
                     )
                     cur.execute(
                         """
+                        ALTER TABLE specrag_chunks
+                        ADD COLUMN IF NOT EXISTS namespace VARCHAR(64) NOT NULL DEFAULT 'default';
+                        """
+                    )
+                    cur.execute(
+                        """
                         CREATE INDEX IF NOT EXISTS idx_specrag_doc_id
                         ON specrag_chunks(doc_id);
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_specrag_namespace
+                        ON specrag_chunks(namespace);
                         """
                     )
                 self._conn.commit()
@@ -142,6 +155,7 @@ class PostgresStorageRepository(StorageRepository):
                         c.text,
                         meta_str,
                         psycopg2.Binary(emb_bytes),
+                        c.namespace,
                         now,
                     )
                 )
@@ -151,13 +165,14 @@ class PostgresStorageRepository(StorageRepository):
                     cur.executemany(
                         """
                         INSERT INTO specrag_chunks
-                        (id, doc_id, text, metadata_json, embedding, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        (id, doc_id, text, metadata_json, embedding, namespace, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (id) DO UPDATE SET
                             doc_id = EXCLUDED.doc_id,
                             text = EXCLUDED.text,
                             metadata_json = EXCLUDED.metadata_json,
                             embedding = EXCLUDED.embedding,
+                            namespace = EXCLUDED.namespace,
                             created_at = EXCLUDED.created_at;
                         """,
                         records,
@@ -180,7 +195,7 @@ class PostgresStorageRepository(StorageRepository):
                 with self._conn.cursor() as cur:
                     cur.execute(
                         """
-                        SELECT id, doc_id, text, metadata_json, embedding
+                        SELECT id, doc_id, text, metadata_json, embedding, namespace
                         FROM specrag_chunks
                         WHERE id = %s;
                         """,
@@ -210,7 +225,7 @@ class PostgresStorageRepository(StorageRepository):
                 with self._conn.cursor() as cur:
                     cur.execute(
                         """
-                        SELECT id, doc_id, text, metadata_json, embedding
+                        SELECT id, doc_id, text, metadata_json, embedding, namespace
                         FROM specrag_chunks
                         WHERE id = ANY(%s);
                         """,
@@ -226,26 +241,37 @@ class PostgresStorageRepository(StorageRepository):
                     return self._fallback_repo.get_chunks_by_ids(chunk_ids)
                 raise
 
-    def get_all_chunks(self) -> List[DocumentChunk]:
-        """Fetch all chunks."""
+    def get_all_chunks(self, namespace: Optional[str] = None) -> List[DocumentChunk]:
+        """Fetch all chunks, optionally filtered by namespace."""
         with self._lock:
             if self._is_fallback and self._fallback_repo:
-                return self._fallback_repo.get_all_chunks()
+                return self._fallback_repo.get_all_chunks(namespace=namespace)
 
             try:
                 with self._conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT id, doc_id, text, metadata_json, embedding
-                        FROM specrag_chunks
-                        ORDER BY created_at ASC;
-                        """
-                    )
+                    if namespace is not None:
+                        cur.execute(
+                            """
+                            SELECT id, doc_id, text, metadata_json, embedding, namespace
+                            FROM specrag_chunks
+                            WHERE namespace = %s
+                            ORDER BY created_at ASC;
+                            """,
+                            (namespace,),
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            SELECT id, doc_id, text, metadata_json, embedding, namespace
+                            FROM specrag_chunks
+                            ORDER BY created_at ASC;
+                            """
+                        )
                     return [self._row_to_chunk(r) for r in cur.fetchall()]
             except Exception as exc:
                 if self.fallback_to_sqlite:
                     self._activate_fallback(exc)
-                    return self._fallback_repo.get_all_chunks()
+                    return self._fallback_repo.get_all_chunks(namespace=namespace)
                 raise
 
     def get_all_embeddings(self) -> Tuple[List[str], np.ndarray]:
@@ -334,7 +360,11 @@ class PostgresStorageRepository(StorageRepository):
                 self._conn = None
 
     def _row_to_chunk(self, row: Tuple) -> DocumentChunk:
-        cid, doc_id, text, meta_json, emb_bytes = row
+        if len(row) == 6:
+            cid, doc_id, text, meta_json, emb_bytes, ns = row
+        else:
+            cid, doc_id, text, meta_json, emb_bytes = row[:5]
+            ns = "default"
         meta = json.loads(meta_json) if meta_json else {}
         emb = None
         if emb_bytes is not None:
@@ -347,4 +377,5 @@ class PostgresStorageRepository(StorageRepository):
             text=text,
             metadata=meta,
             embedding=emb,
+            namespace=ns,
         )

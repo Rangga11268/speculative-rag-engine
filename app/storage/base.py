@@ -42,8 +42,8 @@ class StorageRepository(ABC):
         return results
 
     @abstractmethod
-    def get_all_chunks(self) -> List[DocumentChunk]:
-        """Fetch all chunks for index warming and corpus iteration."""
+    def get_all_chunks(self, namespace: Optional[str] = None) -> List[DocumentChunk]:
+        """Fetch all chunks for index warming and corpus iteration, optionally filtered by namespace."""
         pass
 
     @abstractmethod

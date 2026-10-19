@@ -4,7 +4,7 @@ import math
 import re
 import threading
 from collections import Counter, defaultdict
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 
 class OkapiBM25Index:
@@ -22,6 +22,7 @@ class OkapiBM25Index:
         self.idf: Dict[str, float] = {}
         self._token_pattern = re.compile(r"\b\w+\b", re.UNICODE)
         self._corpus: Dict[str, str] = {}
+        self._id_to_ns: Dict[str, str] = {}
         self.lock = threading.RLock()
 
     def _tokenize(self, text: str) -> List[str]:
@@ -39,6 +40,7 @@ class OkapiBM25Index:
         """Purge all indexed documents."""
         with self.lock:
             self._corpus.clear()
+            self._id_to_ns.clear()
             self.corpus_size = 0
             self.avgdl = 0.0
             self.doc_len.clear()
@@ -89,7 +91,12 @@ class OkapiBM25Index:
                     1.0 + (self.corpus_size - freq + 0.5) / (freq + 0.5)
                 )
 
-    def add(self, doc_ids: Sequence[str], texts: Sequence[str]) -> None:
+    def add(
+        self,
+        doc_ids: Sequence[str],
+        texts: Sequence[str],
+        namespaces: Optional[Union[str, Sequence[str]]] = None,
+    ) -> None:
         """Add new documents or update existing ones (rebuilds index)."""
         if len(doc_ids) != len(texts):
             raise ValueError(
@@ -98,9 +105,19 @@ class OkapiBM25Index:
         if not doc_ids:
             return
 
+        if namespaces is None:
+            ns_list = ["default"] * len(doc_ids)
+        elif isinstance(namespaces, str):
+            ns_list = [namespaces] * len(doc_ids)
+        else:
+            ns_list = list(namespaces)
+            if len(ns_list) != len(doc_ids):
+                raise ValueError(f"Namespaces count mismatch: {len(ns_list)} vs {len(doc_ids)} doc_ids")
+
         with self.lock:
-            for did, txt in zip(doc_ids, texts):
+            for did, txt, ns in zip(doc_ids, texts, ns_list):
                 self._corpus[did] = txt
+                self._id_to_ns[did] = ns
             all_ids = list(self._corpus.keys())
             all_texts = [self._corpus[did] for did in all_ids]
             self.index(all_ids, all_texts)
@@ -112,6 +129,7 @@ class OkapiBM25Index:
             for did in doc_ids:
                 if did in self._corpus:
                     del self._corpus[did]
+                    self._id_to_ns.pop(did, None)
                     removed += 1
             if removed > 0:
                 all_ids = list(self._corpus.keys())
@@ -119,8 +137,13 @@ class OkapiBM25Index:
                 self.index(all_ids, all_texts)
             return removed
 
-    def search(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
-        """Search top-k documents matching the query using Okapi BM25."""
+    def search(
+        self,
+        query: str,
+        top_k: int = 10,
+        namespace: Optional[str] = None,
+    ) -> List[Tuple[str, float]]:
+        """Search top-k documents matching the query using Okapi BM25, optionally filtered by namespace."""
         with self.lock:
             if not query or self.corpus_size == 0 or top_k <= 0:
                 return []
@@ -139,6 +162,9 @@ class OkapiBM25Index:
                     continue
                 idf_val = self.idf[token]
                 for doc_idx, count in self.inverted_index[token]:
+                    did = self.doc_ids[doc_idx]
+                    if namespace is not None and self._id_to_ns.get(did, "default") != namespace:
+                        continue
                     dl = self.doc_len[doc_idx]
                     denom = count + k1 * (1.0 - b + b * (dl / avgdl))
                     scores[doc_idx] += idf_val * (count * (k1 + 1.0)) / denom

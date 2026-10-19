@@ -30,17 +30,19 @@ class HybridRetriever:
         self,
         query_vector: Union[np.ndarray, Sequence[float]],
         top_k: int = 10,
+        namespace: Optional[str] = None,
     ) -> List[Tuple[str, float]]:
         """Synchronously execute dense cosine vector search."""
-        return self.vector_index.search(query_vector, top_k=top_k)
+        return self.vector_index.search(query_vector, top_k=top_k, namespace=namespace)
 
     def retrieve_sparse(
         self,
         query_text: str,
         top_k: int = 10,
+        namespace: Optional[str] = None,
     ) -> List[Tuple[str, float]]:
         """Synchronously execute Okapi BM25 keyword search."""
-        return self.bm25_index.search(query_text, top_k=top_k)
+        return self.bm25_index.search(query_text, top_k=top_k, namespace=namespace)
 
     def _resolve_candidate_details(
         self, candidates: List[RetrievedCandidate]
@@ -72,14 +74,15 @@ class HybridRetriever:
         dense_weight: float = 1.0,
         bm25_weight: float = 1.0,
         rrf_k: Optional[int] = None,
+        namespace: Optional[str] = None,
     ) -> List[RetrievedCandidate]:
         """Asynchronously execute dense and sparse retrieval in parallel via asyncio.gather."""
         k_smooth = rrf_k if rrf_k is not None else self.default_rrf_k
         fetch_k = max(top_k * 2, 20)
 
         # Run both searches in parallel thread pool tasks to prevent blocking event loop
-        dense_task = asyncio.to_thread(self.retrieve_dense, query_vector, fetch_k)
-        bm25_task = asyncio.to_thread(self.retrieve_sparse, query_text, fetch_k)
+        dense_task = asyncio.to_thread(self.retrieve_dense, query_vector, fetch_k, namespace)
+        bm25_task = asyncio.to_thread(self.retrieve_sparse, query_text, fetch_k, namespace)
 
         dense_results, bm25_results = await asyncio.gather(dense_task, bm25_task)
 
@@ -103,13 +106,14 @@ class HybridRetriever:
         dense_weight: float = 1.0,
         bm25_weight: float = 1.0,
         rrf_k: Optional[int] = None,
+        namespace: Optional[str] = None,
     ) -> List[RetrievedCandidate]:
         """Synchronously execute retrieval and fusion (convenience wrapper)."""
         k_smooth = rrf_k if rrf_k is not None else self.default_rrf_k
         fetch_k = max(top_k * 2, 20)
 
-        dense_results = self.retrieve_dense(query_vector, fetch_k)
-        bm25_results = self.retrieve_sparse(query_text, fetch_k)
+        dense_results = self.retrieve_dense(query_vector, fetch_k, namespace=namespace)
+        bm25_results = self.retrieve_sparse(query_text, fetch_k, namespace=namespace)
 
         fused_candidates = reciprocal_rank_fusion(
             dense_results=dense_results,
@@ -133,20 +137,27 @@ class HybridRetriever:
 
         ids = [c.id for c in chunks]
         texts = [c.text for c in chunks]
+        nss = [c.namespace for c in chunks]
 
         # 1. Update BM25 index
-        self.bm25_index.add(ids, texts)
+        self.bm25_index.add(ids, texts, namespaces=nss)
 
         # 2. Update Vector index (for chunks that have precomputed embeddings)
         embedded_ids = []
         vectors = []
+        embedded_nss = []
         for c in chunks:
             if c.embedding is not None and len(c.embedding) > 0:
                 embedded_ids.append(c.id)
                 vectors.append(c.embedding)
+                embedded_nss.append(c.namespace)
 
         if embedded_ids:
-            self.vector_index.add(embedded_ids, np.array(vectors, dtype=np.float32))
+            self.vector_index.add(
+                embedded_ids,
+                np.array(vectors, dtype=np.float32),
+                namespaces=embedded_nss,
+            )
 
         # 3. Persist to storage repository if requested
         if persist and self.storage_repo is not None:

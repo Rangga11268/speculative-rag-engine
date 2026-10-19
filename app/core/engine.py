@@ -105,21 +105,24 @@ class SpecRAGEngine:
         # 1. Persist to storage repository
         count = self.storage_repo.add_chunks(prepared_chunks)
 
+        chunk_namespaces = [c.namespace for c in prepared_chunks]
         try:
             # 2. Add to dense vector index
-            self.vector_index.add(vec_ids, vectors)
+            self.vector_index.add(vec_ids, vectors, namespaces=chunk_namespaces)
 
             # 3. Add to BM25 index
-            self.bm25_index.add(vec_ids, texts)
+            self.bm25_index.add(vec_ids, texts, namespaces=chunk_namespaces)
         except Exception as e:
             # Atomic reconciliation: If vector or BM25 index fails, rebuild indices from storage
             self.rebuild_indices_from_storage()
             raise RuntimeError(f"Ingestion failed during in-memory index updates; indices reconciled from storage: {e}") from e
 
-        # Invalidate cache on corpus mutation to prevent serving stale results
+        # Invalidate cache for all affected namespaces on corpus mutation
         if count > 0:
             self.index_version += 1
-            self.cache.invalidate(namespace=self.namespace)
+            unique_namespaces = set(chunk_namespaces) | {self.namespace}
+            for ns in unique_namespaces:
+                self.cache.invalidate(namespace=ns)
 
         return count
 
@@ -138,15 +141,18 @@ class SpecRAGEngine:
             for c in all_chunks
         ]
         texts = [c.text for c in all_chunks]
+        chunk_namespaces = [c.namespace for c in all_chunks]
 
         self.vector_index.clear()
-        self.vector_index.add(vec_ids, vectors)
+        self.vector_index.add(vec_ids, vectors, namespaces=chunk_namespaces)
 
         self.bm25_index.clear()
-        self.bm25_index.add(vec_ids, texts)
+        self.bm25_index.add(vec_ids, texts, namespaces=chunk_namespaces)
 
         self.index_version += 1
-        self.cache.invalidate(namespace=self.namespace)
+        unique_namespaces = set(chunk_namespaces) | {self.namespace}
+        for ns in unique_namespaces:
+            self.cache.invalidate(namespace=ns)
         return len(all_chunks)
 
     async def query(self, request: QueryRequest) -> QueryResponse:
@@ -156,11 +162,17 @@ class SpecRAGEngine:
         # 1. Generate query embedding
         query_vector = self.embedder.embed_text(request.query)
 
-        # 2. Check Semantic Cache with namespace and index version isolation
+        # 2. Check Semantic Cache with namespace and server-authoritative index version
         ns = request.namespace if request.namespace else self.namespace
-        idx_ver = request.index_version or str(self.index_version)
+        # Server is single source of truth for active index_version. Ignore or validate client requests.
+        idx_ver = str(self.index_version)
+        if request.index_version is not None and request.index_version != idx_ver:
+            # Client provided a stale or mismatched index_version -> bypass cache lookup to prevent serving stale cache
+            use_cache = False
+        else:
+            use_cache = request.use_cache
 
-        if request.use_cache:
+        if use_cache:
             cached_candidates = self.cache.get(
                 request.query, query_vector, namespace=ns, index_version=idx_ver
             )
@@ -176,7 +188,7 @@ class SpecRAGEngine:
                 )
 
 
-        # 3. Hybrid retrieval (Dense + BM25 via RRF)
+        # 3. Hybrid retrieval (Dense + BM25 via RRF) with namespace isolation
         fetch_k = max(request.top_k * 2, self.settings.DEFAULT_TOP_K)
         candidates = await self.hybrid_retriever.retrieve(
             query_text=request.query,
@@ -185,6 +197,7 @@ class SpecRAGEngine:
             dense_weight=self.settings.RRF_WEIGHT_DENSE,
             bm25_weight=self.settings.RRF_WEIGHT_BM25,
             rrf_k=self.settings.RRF_K,
+            namespace=ns,
         )
 
         if not candidates:
