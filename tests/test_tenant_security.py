@@ -13,8 +13,11 @@ from app.storage.vector_store import DenseVectorIndex
 
 
 @pytest.fixture
-def isolated_test_client(tmp_path):
-    """Provide a fresh, isolated FastAPI TestClient with temporary storage."""
+def isolated_test_client(tmp_path, monkeypatch):
+    """Provide a fresh, isolated FastAPI TestClient with temporary storage and configured test keys."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "SECRET_KEY", "test-cryptographic-secret-key-384-specrag")
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", "test-admin-secret-key-384-specrag")
     db_file = str(tmp_path / "tenant_sec.db")
     storage = SQLiteStorageRepository(db_file)
     vector_idx = DenseVectorIndex(dimension=384)
@@ -298,3 +301,53 @@ def test_error_sanitization_does_not_leak_internals(isolated_test_client):
     # Malformed chunk input
     res_ingest = client.post("/api/v1/ingest", json={"chunks": []}, headers={"Authorization": f"Bearer {token}"})
     assert res_ingest.status_code == 422
+
+
+def test_unconfigured_secrets_fail_closed_safely(monkeypatch):
+    """When SECRET_KEY or ADMIN_API_KEY is missing/empty, operations fail closed without fallback."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "SECRET_KEY", None)
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", None)
+
+    # 1. Direct getter must raise RuntimeError
+    from app.core.security import get_active_secret_key, get_active_admin_key, verify_admin_key, verify_tenant_token
+    with pytest.raises(RuntimeError, match="SECRET_KEY is not configured"):
+        get_active_secret_key()
+
+    with pytest.raises(RuntimeError, match="ADMIN_API_KEY is not configured"):
+        get_active_admin_key()
+
+    # 2. Token creation without explicit key must raise RuntimeError
+    with pytest.raises(RuntimeError, match="SECRET_KEY is not configured"):
+        create_tenant_token("tenant_test")
+
+    # 3. Verification must fail closed safely (returning None/False, NOT raising unhandled crash or accepting default)
+    assert verify_tenant_token("srag_tenant_test_1234567890abcdef1234567890abcdef") is None
+    assert verify_admin_key("any-admin-candidate") is False
+
+
+def test_production_rejects_wildcard_cors():
+    """Production configuration must reject wildcard '*' CORS origins."""
+    s = Settings(
+        ENVIRONMENT="production",
+        ADMIN_API_KEY="super-strong-admin-key-12345",
+        SECRET_KEY="super-strong-secret-key-12345",
+        CORS_ALLOW_ORIGINS=["*"],
+    )
+    with pytest.raises(ValueError, match=r"Wildcard '\*' CORS origin is forbidden in production"):
+        s.validate_production_security()
+
+
+def test_cors_headers_applied(isolated_test_client):
+    """CORS headers must allow configured origin and methods."""
+    client = isolated_test_client
+    res = client.options(
+        "/api/v1/query",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert res.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    assert res.headers.get("access-control-allow-credentials") == "true"
+

@@ -14,21 +14,37 @@ TOKEN_PREFIX = "srag_"
 
 
 def get_active_secret_key() -> str:
-    """Retrieve active SECRET_KEY from application settings."""
+    """Retrieve active SECRET_KEY from application settings.
+    
+    Raises
+    ------
+    RuntimeError
+        If SECRET_KEY is not configured in settings.
+    """
     settings = get_settings()
     key = settings.SECRET_KEY
-    if not key:
-        return "dev-secret-key-specrag-insecure-fallback-384"
-    return key
+    if not key or not key.strip():
+        raise RuntimeError(
+            "SECRET_KEY is not configured. Configure SECRET_KEY in environment or application settings."
+        )
+    return key.strip()
 
 
 def get_active_admin_key() -> str:
-    """Retrieve active ADMIN_API_KEY from application settings."""
+    """Retrieve active ADMIN_API_KEY from application settings.
+    
+    Raises
+    ------
+    RuntimeError
+        If ADMIN_API_KEY is not configured in settings.
+    """
     settings = get_settings()
     key = settings.ADMIN_API_KEY
-    if not key:
-        return "dev-admin-key-specrag-insecure-fallback-384"
-    return key
+    if not key or not key.strip():
+        raise RuntimeError(
+            "ADMIN_API_KEY is not configured. Configure ADMIN_API_KEY in environment or application settings."
+        )
+    return key.strip()
 
 
 def create_tenant_token(tenant_id: str, secret_key: Optional[str] = None) -> str:
@@ -86,7 +102,11 @@ def verify_tenant_token(token: str, secret_key: Optional[str] = None) -> Optiona
     if not tenant_id or not signature:
         return None
 
-    key = secret_key or get_active_secret_key()
+    try:
+        key = secret_key or get_active_secret_key()
+    except RuntimeError:
+        return None
+
     expected_sig = hmac.new(
         key.encode("utf-8"),
         f"tenant:{tenant_id}".encode("utf-8"),
@@ -115,5 +135,8 @@ def verify_admin_key(key: str, admin_api_key: Optional[str] = None) -> bool:
     """
     if not key:
         return False
-    authorized = admin_api_key or get_active_admin_key()
+    try:
+        authorized = admin_api_key or get_active_admin_key()
+    except RuntimeError:
+        return False
     return hmac.compare_digest(key.strip(), authorized.strip())

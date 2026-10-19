@@ -41,6 +41,23 @@ class Settings(BaseSettings):
     # If True, permits unauthenticated requests defaulting to 'default' namespace in development only
     ALLOW_UNAUTHENTICATED_DEV: bool = True
 
+    # Cross-Origin Resource Sharing (CORS) Configuration
+    CORS_ALLOW_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
+    ]
+    CORS_ALLOW_CREDENTIALS: bool = True
+    CORS_ALLOW_METHODS: list[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    CORS_ALLOW_HEADERS: list[str] = [
+        "Authorization",
+        "Content-Type",
+        "X-API-Key",
+        "X-Admin-Key",
+        "X-Tenant-ID",
+    ]
+
     # Storage Repository Settings
     STORAGE_BACKEND: Literal["sqlite", "postgres"] = "sqlite"
     SQLITE_DB_PATH: str = "specrag.db"
@@ -88,6 +105,11 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "CRITICAL SECURITY: Insecure or default SECRET_KEY in production. "
                     "Configure a cryptographically secure key with at least 16 characters."
+                )
+            if "*" in self.CORS_ALLOW_ORIGINS:
+                raise ValueError(
+                    "CRITICAL SECURITY: Wildcard '*' CORS origin is forbidden in production. "
+                    "Specify exact allowed frontend domains."
                 )
 
 

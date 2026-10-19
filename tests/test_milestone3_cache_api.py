@@ -231,8 +231,13 @@ def test_engine_cache_integration(tmp_path):
     asyncio.run(_run())
 
 
-def test_fastapi_endpoints(tmp_path):
+def test_fastapi_endpoints(tmp_path, monkeypatch):
     """Verify all FastAPI routes via TestClient."""
+    from app.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", "test-admin-secret-key-384-specrag")
+    monkeypatch.setattr(settings, "SECRET_KEY", "test-cryptographic-secret-key-384-specrag")
+
     db_file = str(tmp_path / "test_api.db")
     storage = SQLiteStorageRepository(db_file)
     vector_idx = DenseVectorIndex(dimension=384)
