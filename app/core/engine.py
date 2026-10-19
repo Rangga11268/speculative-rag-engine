@@ -39,7 +39,10 @@ class SpecRAGEngine:
         reranker: Optional[BaseReranker] = None,
         cache: Optional[BaseSemanticCache] = None,
         settings: Optional[Settings] = None,
+        namespace: str = "default",
     ):
+        self.namespace = namespace
+        self.index_version: int = 1
         self.settings = settings or get_settings()
         self.storage_repo = storage_repo or SQLiteStorageRepository(self.settings.SQLITE_DB_PATH)
         self.vector_index = vector_index or DenseVectorIndex(dimension=self.settings.VECTOR_DIMENSION)
@@ -108,6 +111,11 @@ class SpecRAGEngine:
         # 3. Add to BM25 index
         self.bm25_index.add(vec_ids, texts)
 
+        # Invalidate cache on corpus mutation to prevent serving stale results
+        if count > 0:
+            self.index_version += 1
+            self.cache.invalidate(namespace=self.namespace)
+
         return count
 
     async def query(self, request: QueryRequest) -> QueryResponse:
@@ -117,9 +125,14 @@ class SpecRAGEngine:
         # 1. Generate query embedding
         query_vector = self.embedder.embed_text(request.query)
 
-        # 2. Check Semantic Cache
+        # 2. Check Semantic Cache with namespace and index version isolation
+        ns = request.namespace if request.namespace else self.namespace
+        idx_ver = request.index_version or str(self.index_version)
+
         if request.use_cache:
-            cached_candidates = self.cache.get(request.query, query_vector)
+            cached_candidates = self.cache.get(
+                request.query, query_vector, namespace=ns, index_version=idx_ver
+            )
             if cached_candidates is not None:
                 latency_ms = (time.perf_counter() - t0) * 1000.0
                 return QueryResponse(
@@ -130,6 +143,7 @@ class SpecRAGEngine:
                     latency_ms=round(latency_ms, 3),
                     gating_telemetry=None,
                 )
+
 
         # 3. Hybrid retrieval (Dense + BM25 via RRF)
         fetch_k = max(request.top_k * 2, self.settings.DEFAULT_TOP_K)
@@ -203,7 +217,10 @@ class SpecRAGEngine:
 
         # 5. Populate cache if requested
         if request.use_cache and schema_results:
-            self.cache.set(request.query, query_vector, schema_results)
+            self.cache.set(
+                request.query, query_vector, schema_results, namespace=ns, index_version=idx_ver
+            )
+
 
         gating_schema = GatingTelemetrySchema(
             decision=telemetry.decision.value,

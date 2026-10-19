@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional, Sequence
 
 from app.api.schemas import RetrievedCandidateSchema
@@ -66,7 +67,11 @@ class RedisSemanticCache(BaseSemanticCache):
         return self._is_redis_connected
 
     def get(
-        self, query: str, query_vector: Sequence[float]
+        self,
+        query: str,
+        query_vector: Sequence[float],
+        namespace: str = "default",
+        index_version: str = "v1",
     ) -> Optional[List[RetrievedCandidateSchema]]:
         """Retrieve cached candidates.
 
@@ -76,49 +81,90 @@ class RedisSemanticCache(BaseSemanticCache):
         # Exact lookup in Redis if connected
         if self._is_redis_connected and self._redis_client:
             try:
-                key = f"specrag:cache:exact:{query.strip().lower()}"
+                clean_q = query.strip().lower()
+                key = f"specrag:{namespace}:{index_version}:exact:{clean_q}"
                 val = self._redis_client.get(key)
                 if val:
+                    # Refresh accessed timestamp in zset for LRU tracking
+                    zset_key = f"specrag:{namespace}:{index_version}:zkeys"
+                    self._redis_client.zadd(zset_key, {key: time.time()}, xx=True)
                     raw_list = json.loads(val)
                     return [RetrievedCandidateSchema(**item) for item in raw_list]
             except Exception as e:
                 logger.warning("Redis get error, falling back: %s", str(e))
 
-        return self._memory_cache.get(query, query_vector)
+        return self._memory_cache.get(
+            query, query_vector, namespace=namespace, index_version=index_version
+        )
 
     def set(
         self,
         query: str,
         query_vector: Sequence[float],
         results: List[RetrievedCandidateSchema],
+        namespace: str = "default",
+        index_version: str = "v1",
     ) -> None:
         """Cache candidates in both in-memory store and Redis."""
-        self._memory_cache.set(query, query_vector, results)
+        self._memory_cache.set(
+            query, query_vector, results, namespace=namespace, index_version=index_version
+        )
 
         if self._is_redis_connected and self._redis_client:
             try:
-                key = f"specrag:cache:exact:{query.strip().lower()}"
+                clean_q = query.strip().lower()
+                key = f"specrag:{namespace}:{index_version}:exact:{clean_q}"
+                zset_key = f"specrag:{namespace}:{index_version}:zkeys"
                 data = json.dumps([r.model_dump() for r in results])
                 if self.ttl_seconds > 0:
                     self._redis_client.setex(key, self.ttl_seconds, data)
                 else:
                     self._redis_client.set(key, data)
+
+                # Track key timestamp for LRU capacity eviction (P2 Redis Bound)
+                now_ts = time.time()
+                self._redis_client.zadd(zset_key, {key: now_ts})
+                if self.ttl_seconds > 0:
+                    self._redis_client.expire(zset_key, self.ttl_seconds + 300)
+
+                if self.max_entries > 0:
+                    card = self._redis_client.zcard(zset_key)
+                    if card > self.max_entries:
+                        to_remove = card - self.max_entries
+                        oldest = self._redis_client.zpopmin(zset_key, to_remove)
+                        for old_k, _ in oldest:
+                            self._redis_client.delete(old_k)
             except Exception as e:
                 logger.warning("Redis set error: %s", str(e))
 
-    def clear(self) -> None:
+    def clear(self, namespace: Optional[str] = None) -> None:
         """Clear cache state."""
-        self._memory_cache.clear()
+        self._memory_cache.clear(namespace=namespace)
         if self._is_redis_connected and self._redis_client:
             try:
-                for k in self._redis_client.scan_iter("specrag:cache:exact:*"):
+                pattern = f"specrag:{namespace}:*" if namespace else "specrag:*"
+                for k in self._redis_client.scan_iter(pattern):
                     self._redis_client.delete(k)
             except Exception as e:
                 logger.warning("Redis clear error: %s", str(e))
 
-    def size(self) -> int:
+    def invalidate(self, namespace: str = "default", index_version: Optional[str] = None) -> None:
+        """Invalidate entries matching namespace and optionally index version."""
+        self._memory_cache.invalidate(namespace=namespace, index_version=index_version)
+        if self._is_redis_connected and self._redis_client:
+            try:
+                if index_version:
+                    pattern = f"specrag:{namespace}:{index_version}:*"
+                else:
+                    pattern = f"specrag:{namespace}:*"
+                for k in self._redis_client.scan_iter(pattern):
+                    self._redis_client.delete(k)
+            except Exception as e:
+                logger.warning("Redis invalidate error: %s", str(e))
+
+    def size(self, namespace: Optional[str] = None) -> int:
         """Return entry count."""
-        return self._memory_cache.size()
+        return self._memory_cache.size(namespace=namespace)
 
     def stats(self) -> Dict[str, Any]:
         """Return cache statistics including backend indicator."""
@@ -126,3 +172,4 @@ class RedisSemanticCache(BaseSemanticCache):
         st["redis_connected"] = self._is_redis_connected
         st["backend"] = "redis+memory" if self._is_redis_connected else "in_memory"
         return st
+

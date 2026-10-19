@@ -301,3 +301,48 @@ def test_fastapi_endpoints(tmp_path):
     res_query3 = client.post("/api/v1/query", json=query_payload)
     assert res_query3.status_code == 200
     assert res_query3.json()["cache_hit"] is False
+
+
+def test_cache_namespace_corpus_isolation():
+    """Verify identical queries in different tenant/corpus namespaces are strictly isolated."""
+    cache = MemorySemanticCache(similarity_threshold=0.92, max_entries=100, ttl_seconds=300)
+    vec = [0.1] * 384
+
+    cand_legal = [
+        RetrievedCandidateSchema(chunk_id="c_leg", doc_id="doc_leg", text="Legal clause", score=0.9)
+    ]
+    cand_tech = [
+        RetrievedCandidateSchema(chunk_id="c_tech", doc_id="doc_tech", text="Tech manual", score=0.95)
+    ]
+
+    cache.set("compliance", vec, cand_legal, namespace="legal_corpus", index_version="v1")
+    cache.set("compliance", vec, cand_tech, namespace="tech_corpus", index_version="v1")
+
+    res_leg = cache.get("compliance", vec, namespace="legal_corpus", index_version="v1")
+    assert res_leg is not None
+    assert res_leg[0].chunk_id == "c_leg"
+
+    res_tech = cache.get("compliance", vec, namespace="tech_corpus", index_version="v1")
+    assert res_tech is not None
+    assert res_tech[0].chunk_id == "c_tech"
+
+    # Querying a non-existent namespace returns cache miss
+    assert cache.get("compliance", vec, namespace="finance_corpus", index_version="v1") is None
+
+
+def test_cache_index_version_invalidation():
+    """Verify cache invalidation when index_version changes."""
+    cache = MemorySemanticCache(similarity_threshold=0.92, max_entries=100, ttl_seconds=300)
+    vec = [0.1] * 384
+    candidates = _mock_candidates()
+
+    cache.set("query", vec, candidates, namespace="default", index_version="v1")
+    assert cache.get("query", vec, namespace="default", index_version="v1") is not None
+
+    # Stale version lookup is a miss
+    assert cache.get("query", vec, namespace="default", index_version="v2") is None
+
+    # Invalidate v1
+    cache.invalidate(namespace="default", index_version="v1")
+    assert cache.get("query", vec, namespace="default", index_version="v1") is None
+

@@ -111,6 +111,9 @@ class QueryRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=50, description="Desired number of final ranked results")
     use_cache: bool = Field(default=True, description="Whether to check semantic cache")
     force_rerank: bool = Field(default=False, description="Bypass dynamic gating and force reranker")
+    namespace: str = Field(default="default", description="Corpus or tenant namespace for cache isolation")
+    index_version: Optional[str] = Field(default=None, description="Index version identifier for cache invalidation")
+
 
 
 class GatingTelemetrySchema(BaseModel):
