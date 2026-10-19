@@ -96,21 +96,29 @@ class Settings(BaseSettings):
     def validate_production_security(self) -> None:
         """Enforce strict cryptographic secret standards in production environment."""
         if self.ENVIRONMENT == "production":
-            if not self.ADMIN_API_KEY or self.ADMIN_API_KEY.strip().lower() in INSECURE_SECRETS or len(self.ADMIN_API_KEY.strip()) < 16:
+            if not self.ADMIN_API_KEY or self.ADMIN_API_KEY.strip().lower() in INSECURE_SECRETS or len(self.ADMIN_API_KEY.strip()) < 32:
                 raise ValueError(
-                    "CRITICAL SECURITY: Insecure or default ADMIN_API_KEY in production. "
-                    "Configure a cryptographically secure key with at least 16 characters."
+                    "CRITICAL SECURITY: Insecure or insufficiently strong ADMIN_API_KEY in production. "
+                    "Configure a cryptographically random secret with at least 32 characters (256-bit entropy)."
                 )
-            if not self.SECRET_KEY or self.SECRET_KEY.strip().lower() in INSECURE_SECRETS or len(self.SECRET_KEY.strip()) < 16:
+            if not self.SECRET_KEY or self.SECRET_KEY.strip().lower() in INSECURE_SECRETS or len(self.SECRET_KEY.strip()) < 32:
                 raise ValueError(
-                    "CRITICAL SECURITY: Insecure or default SECRET_KEY in production. "
-                    "Configure a cryptographically secure key with at least 16 characters."
+                    "CRITICAL SECURITY: Insecure or insufficiently strong SECRET_KEY in production. "
+                    "Configure a cryptographically random secret with at least 32 characters (256-bit entropy)."
                 )
             if "*" in self.CORS_ALLOW_ORIGINS:
                 raise ValueError(
                     "CRITICAL SECURITY: Wildcard '*' CORS origin is forbidden in production. "
                     "Specify exact allowed frontend domains."
                 )
+            insecure_origins = {"localhost", "127.0.0.1", "0.0.0.0"}
+            for origin in self.CORS_ALLOW_ORIGINS:
+                cleaned = origin.strip().lower()
+                if any(bad in cleaned for bad in insecure_origins):
+                    raise ValueError(
+                        f"CRITICAL SECURITY: Insecure development origin '{origin}' in production CORS_ALLOW_ORIGINS. "
+                        "Specify authorized production domain names only."
+                    )
 
 
 @lru_cache(maxsize=1)

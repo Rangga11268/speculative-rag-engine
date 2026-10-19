@@ -71,7 +71,7 @@ def create_tenant_token(tenant_id: str, secret_key: Optional[str] = None) -> str
         key.encode("utf-8"),
         f"tenant:{clean_tenant}".encode("utf-8"),
         hashlib.sha256,
-    ).hexdigest()[:32]
+    ).hexdigest()
     return f"{TOKEN_PREFIX}{clean_tenant}_{sig}"
 
 
@@ -99,7 +99,7 @@ def verify_tenant_token(token: str, secret_key: Optional[str] = None) -> Optiona
         return None
 
     tenant_id, signature = parts
-    if not tenant_id or not signature:
+    if not tenant_id or not signature or len(signature) != 64:
         return None
 
     try:
@@ -111,7 +111,7 @@ def verify_tenant_token(token: str, secret_key: Optional[str] = None) -> Optiona
         key.encode("utf-8"),
         f"tenant:{tenant_id}".encode("utf-8"),
         hashlib.sha256,
-    ).hexdigest()[:32]
+    ).hexdigest()
 
     if hmac.compare_digest(signature, expected_sig):
         return tenant_id

@@ -265,27 +265,32 @@ def test_admin_authentication_and_authority(isolated_test_client):
 def test_production_startup_rejects_insecure_secrets():
     """Application startup validator strictly rejects default/short secrets in production."""
     # 1. Default insecure admin secret in production -> Must raise ValueError
-    s1 = Settings(ENVIRONMENT="production", ADMIN_API_KEY="admin-secret", SECRET_KEY="long-enough-secret-key-384")
-    with pytest.raises(ValueError, match="CRITICAL SECURITY: Insecure or default ADMIN_API_KEY"):
+    s1 = Settings(ENVIRONMENT="production", ADMIN_API_KEY="admin-secret", SECRET_KEY="long-enough-secret-key-384-at-least-32-chars")
+    with pytest.raises(ValueError, match="CRITICAL SECURITY: Insecure or insufficiently strong ADMIN_API_KEY"):
         s1.validate_production_security()
 
     # 2. Missing admin key in production -> Must raise ValueError
-    s2 = Settings(ENVIRONMENT="production", ADMIN_API_KEY=None, SECRET_KEY="long-enough-secret-key-384")
-    with pytest.raises(ValueError, match="CRITICAL SECURITY: Insecure or default ADMIN_API_KEY"):
+    s2 = Settings(ENVIRONMENT="production", ADMIN_API_KEY=None, SECRET_KEY="long-enough-secret-key-384-at-least-32-chars")
+    with pytest.raises(ValueError, match="CRITICAL SECURITY: Insecure or insufficiently strong ADMIN_API_KEY"):
         s2.validate_production_security()
 
-    # 3. Too short admin key (< 16 chars) in production -> Must raise ValueError
-    s3 = Settings(ENVIRONMENT="production", ADMIN_API_KEY="short_key", SECRET_KEY="long-enough-secret-key-384")
-    with pytest.raises(ValueError, match="CRITICAL SECURITY: Insecure or default ADMIN_API_KEY"):
+    # 3. Too short admin key (< 32 chars) in production -> Must raise ValueError
+    s3 = Settings(ENVIRONMENT="production", ADMIN_API_KEY="short_key", SECRET_KEY="long-enough-secret-key-384-at-least-32-chars")
+    with pytest.raises(ValueError, match="CRITICAL SECURITY: Insecure or insufficiently strong ADMIN_API_KEY"):
         s3.validate_production_security()
 
     # 4. Default insecure SECRET_KEY in production -> Must raise ValueError
-    s4 = Settings(ENVIRONMENT="production", ADMIN_API_KEY="super-strong-admin-key-12345", SECRET_KEY="secret")
-    with pytest.raises(ValueError, match="CRITICAL SECURITY: Insecure or default SECRET_KEY"):
+    s4 = Settings(ENVIRONMENT="production", ADMIN_API_KEY="super-strong-admin-key-at-least-32-chars-long", SECRET_KEY="secret")
+    with pytest.raises(ValueError, match="CRITICAL SECURITY: Insecure or insufficiently strong SECRET_KEY"):
         s4.validate_production_security()
 
-    # 5. Cryptographically secure keys (>= 16 chars) in production -> Passes cleanly
-    s5 = Settings(ENVIRONMENT="production", ADMIN_API_KEY="prod-admin-secrag-key-super-secure-384", SECRET_KEY="prod-secret-signing-key-super-secure-384")
+    # 5. Cryptographically secure keys (>= 32 chars) with secure production CORS -> Passes cleanly
+    s5 = Settings(
+        ENVIRONMENT="production",
+        ADMIN_API_KEY="prod-admin-secrag-key-super-secure-384",
+        SECRET_KEY="prod-secret-signing-key-super-secure-384",
+        CORS_ALLOW_ORIGINS=["https://app.example.com", "https://api.example.com"],
+    )
     s5.validate_production_security()  # No error raised
 
 
@@ -322,7 +327,7 @@ def test_unconfigured_secrets_fail_closed_safely(monkeypatch):
         create_tenant_token("tenant_test")
 
     # 3. Verification must fail closed safely (returning None/False, NOT raising unhandled crash or accepting default)
-    assert verify_tenant_token("srag_tenant_test_1234567890abcdef1234567890abcdef") is None
+    assert verify_tenant_token("srag_tenant_test_" + "a" * 64) is None
     assert verify_admin_key("any-admin-candidate") is False
 
 
@@ -330,12 +335,57 @@ def test_production_rejects_wildcard_cors():
     """Production configuration must reject wildcard '*' CORS origins."""
     s = Settings(
         ENVIRONMENT="production",
-        ADMIN_API_KEY="super-strong-admin-key-12345",
-        SECRET_KEY="super-strong-secret-key-12345",
+        ADMIN_API_KEY="super-strong-admin-key-at-least-32-chars-long",
+        SECRET_KEY="super-strong-secret-key-at-least-32-chars-long",
         CORS_ALLOW_ORIGINS=["*"],
     )
     with pytest.raises(ValueError, match=r"Wildcard '\*' CORS origin is forbidden in production"):
         s.validate_production_security()
+
+
+def test_production_rejects_localhost_cors():
+    """Production configuration must reject localhost and 127.0.0.1 in CORS origins."""
+    s = Settings(
+        ENVIRONMENT="production",
+        ADMIN_API_KEY="super-strong-admin-key-at-least-32-chars-long",
+        SECRET_KEY="super-strong-secret-key-at-least-32-chars-long",
+        CORS_ALLOW_ORIGINS=["https://app.example.com", "http://localhost:3000"],
+    )
+    with pytest.raises(ValueError, match=r"Insecure development origin 'http://localhost:3000'"):
+        s.validate_production_security()
+
+
+def test_production_rejects_short_secrets():
+    """Production configuration must reject secrets with less than 32 characters (<256 bit entropy)."""
+    s = Settings(
+        ENVIRONMENT="production",
+        ADMIN_API_KEY="short-admin-key-16-bytes",
+        SECRET_KEY="super-strong-secret-key-at-least-32-chars-long",
+        CORS_ALLOW_ORIGINS=["https://app.example.com"],
+    )
+    with pytest.raises(ValueError, match=r"insufficiently strong ADMIN_API_KEY in production"):
+        s.validate_production_security()
+
+
+def test_fastapi_lifespan_aborts_on_invalid_production_config(monkeypatch):
+    """FastAPI application lifespan startup must abort cleanly when production security fails."""
+    from fastapi.testclient import TestClient
+    from app.main import create_app
+    import app.main as main_module
+
+    # Configure invalid production settings
+    bad_settings = Settings(
+        ENVIRONMENT="production",
+        ADMIN_API_KEY="short-key",
+        SECRET_KEY="short-key",
+        CORS_ALLOW_ORIGINS=["*"],
+    )
+    monkeypatch.setattr(main_module, "get_settings", lambda: bad_settings)
+
+    app = create_app()
+    with pytest.raises(ValueError, match=r"CRITICAL SECURITY: Insecure or insufficiently strong"):
+        with TestClient(app):
+            pass
 
 
 def test_cors_headers_applied(isolated_test_client):
