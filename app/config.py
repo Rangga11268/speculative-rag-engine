@@ -14,6 +14,7 @@ INSECURE_SECRETS = {
     "default",
     "changeme",
     "password",
+    "postgres",
     "123456",
     "test",
     "secret-key",
@@ -94,8 +95,9 @@ class Settings(BaseSettings):
     CACHE_TTL_SECONDS: int = 3600
 
     def validate_production_security(self) -> None:
-        """Enforce strict cryptographic secret standards in production environment."""
+        """Enforce strict cryptographic secret standards, database credentials, and storage policies in production."""
         if self.ENVIRONMENT == "production":
+            # 1. Cryptographic Authentication & RBAC Secrets
             if not self.ADMIN_API_KEY or self.ADMIN_API_KEY.strip().lower() in INSECURE_SECRETS or len(self.ADMIN_API_KEY.strip()) < 32:
                 raise ValueError(
                     "CRITICAL SECURITY: Insecure or insufficiently strong ADMIN_API_KEY in production. "
@@ -106,6 +108,8 @@ class Settings(BaseSettings):
                     "CRITICAL SECURITY: Insecure or insufficiently strong SECRET_KEY in production. "
                     "Configure a cryptographically random secret with at least 32 characters (256-bit entropy)."
                 )
+
+            # 2. CORS Production Policy
             if "*" in self.CORS_ALLOW_ORIGINS:
                 raise ValueError(
                     "CRITICAL SECURITY: Wildcard '*' CORS origin is forbidden in production. "
@@ -118,6 +122,26 @@ class Settings(BaseSettings):
                     raise ValueError(
                         f"CRITICAL SECURITY: Insecure development origin '{origin}' in production CORS_ALLOW_ORIGINS. "
                         "Specify authorized production domain names only."
+                    )
+
+            # 3. Production Database Hardening & Fallback Policy
+            if self.STORAGE_BACKEND == "postgres":
+                if not self.POSTGRES_PASSWORD or self.POSTGRES_PASSWORD.strip().lower() in INSECURE_SECRETS:
+                    raise ValueError(
+                        "CRITICAL SECURITY: Insecure or default POSTGRES_PASSWORD in production environment. "
+                        "A cryptographically secure database password must be explicitly configured."
+                    )
+                if self.POSTGRES_USER.strip().lower() in {"postgres", "root", "admin"}:
+                    logger.warning(
+                        "SECURITY WARNING: Production database is configured with default superuser role '%s'. "
+                        "A dedicated least-privilege application user is strongly recommended.",
+                        self.POSTGRES_USER,
+                    )
+                if self.POSTGRES_FALLBACK_TO_SQLITE:
+                    raise ValueError(
+                        "CRITICAL ARCHITECTURE: POSTGRES_FALLBACK_TO_SQLITE is strictly forbidden in production. "
+                        "Silent failover from PostgreSQL to local SQLite causes split-brain state, data loss, "
+                        "and multi-tenant isolation discrepancies. Set POSTGRES_FALLBACK_TO_SQLITE=False."
                     )
 
 

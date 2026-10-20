@@ -401,3 +401,34 @@ def test_cors_headers_applied(isolated_test_client):
     assert res.headers.get("access-control-allow-origin") == "http://localhost:3000"
     assert res.headers.get("access-control-allow-credentials") == "true"
 
+
+def test_production_rejects_postgres_default_credentials():
+    """Production configuration must reject default or empty POSTGRES_PASSWORD when using postgres backend."""
+    s = Settings(
+        ENVIRONMENT="production",
+        ADMIN_API_KEY="super-strong-admin-key-at-least-32-chars-long",
+        SECRET_KEY="super-strong-secret-key-at-least-32-chars-long",
+        CORS_ALLOW_ORIGINS=["https://app.example.com"],
+        STORAGE_BACKEND="postgres",
+        POSTGRES_PASSWORD="postgres",
+        POSTGRES_FALLBACK_TO_SQLITE=False,
+    )
+    with pytest.raises(ValueError, match=r"Insecure or default POSTGRES_PASSWORD"):
+        s.validate_production_security()
+
+
+def test_production_rejects_postgres_fallback_to_sqlite():
+    """Production configuration must strictly forbid POSTGRES_FALLBACK_TO_SQLITE to prevent silent data split-brain."""
+    s = Settings(
+        ENVIRONMENT="production",
+        ADMIN_API_KEY="super-strong-admin-key-at-least-32-chars-long",
+        SECRET_KEY="super-strong-secret-key-at-least-32-chars-long",
+        CORS_ALLOW_ORIGINS=["https://app.example.com"],
+        STORAGE_BACKEND="postgres",
+        POSTGRES_PASSWORD="ultra-secure-random-postgres-password-999",
+        POSTGRES_FALLBACK_TO_SQLITE=True,
+    )
+    with pytest.raises(ValueError, match=r"POSTGRES_FALLBACK_TO_SQLITE is strictly forbidden in production"):
+        s.validate_production_security()
+
+
