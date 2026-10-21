@@ -31,7 +31,7 @@ jobs:
         pip install -r requirements.txt
         pip install matplotlib
 
-    - name: Execute Full Automated Test Suite (314 Tests)
+    - name: Execute Full Automated Test Suite (317 Tests)
       run: |
         python run_tests.py --tier full
 

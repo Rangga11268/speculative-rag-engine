@@ -272,3 +272,74 @@ class TestEngineStorageBackendSelection:
         assert engine.storage_repo is custom_repo
         engine.storage_repo.close()
 
+    def test_postgres_runtime_write_failure_fails_closed(self, sample_chunks, monkeypatch):
+        """When PostgreSQL connection drops during add_chunks and fallback is False, fail closed."""
+        from unittest.mock import MagicMock
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_cursor.executemany.side_effect = Exception("DB connection reset by peer")
+
+        repo = PostgresStorageRepository(
+            fallback_to_sqlite=False,
+            dimension=384,
+        )
+        repo._conn = mock_conn
+
+        with pytest.raises(Exception, match="DB connection reset"):
+            repo.add_chunks(sample_chunks)
+
+    def test_postgres_runtime_write_failure_activates_fallback_and_recovers(self, sample_chunks, tmp_path):
+        """When PostgreSQL fails during add_chunks and fallback is True, switch to SQLite."""
+        from unittest.mock import MagicMock
+
+        fallback_file = str(tmp_path / "runtime_fb.db")
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_cursor.executemany.side_effect = Exception("OperationalError: server closed the connection")
+
+        repo = PostgresStorageRepository(
+            fallback_to_sqlite=True,
+            sqlite_fallback_path=fallback_file,
+            dimension=384,
+        )
+        repo._conn = mock_conn
+
+        added = repo.add_chunks(sample_chunks)
+        assert added == len(sample_chunks)
+        assert repo.is_fallback is True
+        assert repo.count() == len(sample_chunks)
+        repo.close()
+
+    def test_health_endpoint_surfaces_degraded_fallback_status(self, tmp_path):
+        """FastAPI /health reflects degraded status when storage operates on fallback."""
+        from fastapi.testclient import TestClient
+        from app.config import Settings
+        from app.core.engine import SpecRAGEngine
+        from app.api.deps import set_engine
+        from app.main import app
+
+        fallback_file = str(tmp_path / "health_fb.db")
+        settings = Settings(
+            STORAGE_BACKEND="postgres",
+            POSTGRES_PORT=54329,
+            POSTGRES_FALLBACK_TO_SQLITE=True,
+            SQLITE_DB_PATH=fallback_file,
+        )
+        engine = SpecRAGEngine(settings=settings)
+        set_engine(engine)
+
+        client = TestClient(app)
+        res = client.get("/health")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "degraded"
+        assert data["is_fallback"] is True
+        assert data["storage_backend"] == "postgres"
+
+        set_engine(None)
+        engine.storage_repo.close()
+
+

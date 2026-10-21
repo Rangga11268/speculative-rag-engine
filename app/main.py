@@ -52,11 +52,14 @@ def create_app() -> FastAPI:
     async def health_check() -> Dict[str, Any]:
         """Health check endpoint indicating service status and cache metrics."""
         engine = get_engine()
+        active_settings = engine.settings if engine else get_settings()
+        storage_is_fallback = getattr(engine.storage_repo, "is_fallback", False) if engine else False
         return {
-            "status": "healthy",
-            "app": settings.APP_NAME,
+            "status": "healthy" if not storage_is_fallback else "degraded",
+            "app": active_settings.APP_NAME,
             "version": "0.1.0",
-            "storage_backend": settings.STORAGE_BACKEND,
+            "storage_backend": active_settings.STORAGE_BACKEND,
+            "is_fallback": storage_is_fallback,
             "cache_entries": engine.cache.size() if engine else 0,
         }
 
