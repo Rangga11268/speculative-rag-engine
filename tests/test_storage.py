@@ -279,18 +279,20 @@ class TestEngineStorageBackendSelection:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        mock_cursor.executemany.side_effect = Exception("DB connection reset by peer")
+
+        monkeypatch.setattr(PostgresStorageRepository, "_connect", lambda self: mock_conn)
 
         repo = PostgresStorageRepository(
             fallback_to_sqlite=False,
             dimension=384,
         )
-        repo._conn = mock_conn
+        assert repo.is_fallback is False
 
+        mock_cursor.executemany.side_effect = Exception("DB connection reset by peer")
         with pytest.raises(Exception, match="DB connection reset"):
             repo.add_chunks(sample_chunks)
 
-    def test_postgres_runtime_write_failure_activates_fallback_and_recovers(self, sample_chunks, tmp_path):
+    def test_postgres_runtime_write_failure_activates_fallback_and_recovers(self, sample_chunks, tmp_path, monkeypatch):
         """When PostgreSQL fails during add_chunks and fallback is True, switch to SQLite."""
         from unittest.mock import MagicMock
 
@@ -298,14 +300,17 @@ class TestEngineStorageBackendSelection:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        mock_cursor.executemany.side_effect = Exception("OperationalError: server closed the connection")
+
+        monkeypatch.setattr(PostgresStorageRepository, "_connect", lambda self: mock_conn)
 
         repo = PostgresStorageRepository(
             fallback_to_sqlite=True,
             sqlite_fallback_path=fallback_file,
             dimension=384,
         )
-        repo._conn = mock_conn
+        assert repo.is_fallback is False
+
+        mock_cursor.executemany.side_effect = Exception("OperationalError: server closed the connection")
 
         added = repo.add_chunks(sample_chunks)
         assert added == len(sample_chunks)
