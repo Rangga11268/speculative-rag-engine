@@ -212,3 +212,63 @@ class TestPostgresStorageRepository:
             assert repo.count() == 0
         finally:
             repo.close()
+
+
+class TestEngineStorageBackendSelection:
+    """Tests verifying SpecRAGEngine correctly honors settings.STORAGE_BACKEND."""
+
+    def test_engine_initializes_sqlite_by_default(self, tmp_path):
+        from app.config import Settings
+        from app.core.engine import SpecRAGEngine
+
+        db_path = str(tmp_path / "sqlite_test.db")
+        settings = Settings(STORAGE_BACKEND="sqlite", SQLITE_DB_PATH=db_path)
+        engine = SpecRAGEngine(settings=settings)
+
+        assert isinstance(engine.storage_repo, SQLiteStorageRepository)
+        assert engine.storage_repo.db_path == db_path
+        engine.storage_repo.close()
+
+    def test_engine_initializes_postgres_with_fallback(self, tmp_path):
+        from app.config import Settings
+        from app.core.engine import SpecRAGEngine
+
+        fallback_path = str(tmp_path / "fallback.db")
+        settings = Settings(
+            STORAGE_BACKEND="postgres",
+            POSTGRES_HOST="127.0.0.1",
+            POSTGRES_PORT=54329,  # Unreachable port
+            POSTGRES_FALLBACK_TO_SQLITE=True,
+            SQLITE_DB_PATH=fallback_path,
+        )
+        engine = SpecRAGEngine(settings=settings)
+        assert isinstance(engine.storage_repo, PostgresStorageRepository)
+        # Should have fallen back safely
+        assert engine.storage_repo.is_fallback is True
+        engine.storage_repo.close()
+
+    def test_engine_postgres_fails_fast_when_fallback_disabled(self, tmp_path):
+        from app.config import Settings
+        from app.core.engine import SpecRAGEngine
+
+        settings = Settings(
+            STORAGE_BACKEND="postgres",
+            POSTGRES_HOST="127.0.0.1",
+            POSTGRES_PORT=54329,  # Unreachable port
+            POSTGRES_FALLBACK_TO_SQLITE=False,
+        )
+        with pytest.raises(Exception):
+            SpecRAGEngine(settings=settings)
+
+    def test_engine_respects_explicit_storage_repo(self, tmp_path):
+        from app.config import Settings
+        from app.core.engine import SpecRAGEngine
+
+        custom_path = str(tmp_path / "custom.db")
+        custom_repo = SQLiteStorageRepository(db_path=custom_path, dimension=384)
+        settings = Settings(STORAGE_BACKEND="postgres")  # Backend in settings is ignored if explicit repo passed
+
+        engine = SpecRAGEngine(storage_repo=custom_repo, settings=settings)
+        assert engine.storage_repo is custom_repo
+        engine.storage_repo.close()
+

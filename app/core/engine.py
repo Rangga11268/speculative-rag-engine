@@ -44,7 +44,26 @@ class SpecRAGEngine:
         self.namespace = namespace
         self.index_version: int = 1
         self.settings = settings or get_settings()
-        self.storage_repo = storage_repo or SQLiteStorageRepository(self.settings.SQLITE_DB_PATH)
+
+        if storage_repo is not None:
+            self.storage_repo = storage_repo
+        elif self.settings.STORAGE_BACKEND == "postgres":
+            from app.storage.postgres import PostgresStorageRepository
+            self.storage_repo = PostgresStorageRepository(
+                host=self.settings.POSTGRES_HOST,
+                port=self.settings.POSTGRES_PORT,
+                dbname=self.settings.POSTGRES_DB,
+                user=self.settings.POSTGRES_USER,
+                password=self.settings.POSTGRES_PASSWORD,
+                fallback_to_sqlite=self.settings.POSTGRES_FALLBACK_TO_SQLITE,
+                sqlite_fallback_path=self.settings.SQLITE_DB_PATH,
+                dimension=self.settings.VECTOR_DIMENSION,
+            )
+        else:
+            self.storage_repo = SQLiteStorageRepository(
+                db_path=self.settings.SQLITE_DB_PATH,
+                dimension=self.settings.VECTOR_DIMENSION,
+            )
         self.vector_index = vector_index or DenseVectorIndex(dimension=self.settings.VECTOR_DIMENSION)
         self.bm25_index = bm25_index or OkapiBM25Index(k1=self.settings.BM25_K1, b=self.settings.BM25_B)
         self.embedder = embedder or DenseEmbedder(dimension=self.settings.VECTOR_DIMENSION)
