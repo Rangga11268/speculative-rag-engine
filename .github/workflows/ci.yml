@@ -31,7 +31,14 @@ jobs:
         pip install -r requirements.txt
         pip install matplotlib
 
-    - name: Execute Full Automated Test Suite (317 Tests)
+    - name: Start PostgreSQL Service (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo systemctl start postgresql
+        sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+        sudo -u postgres createdb -O postgres postgres 2>/dev/null || true
+
+    - name: Execute Full Automated Test Suite (319 Tests)
       run: |
         python run_tests.py --tier full
 

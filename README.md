@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.12-blue.svg" alt="Python 3.12"></a>
   <a href="https://github.com/Rangga11268/speculative-rag-engine/actions"><img src="https://github.com/Rangga11268/speculative-rag-engine/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline"></a>
-  <a href="#"><img src="https://img.shields.io/badge/Tests-317%20Passed-brightgreen.svg" alt="Tests"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Tests-319%20Passed-brightgreen.svg" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/Platform-Cross--Platform%20%7C%20Zero--Docker-success.svg" alt="Platform"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
@@ -116,7 +116,7 @@ speculative-rag-engine/
 ├── benchmarks/
 │   ├── benchmark_ablation.py  # Ablation evaluation script
 │   └── ablation_report.json   # Output benchmark results
-├── tests/                     # 317 Automated Tests (100% Pass)
+├── tests/                     # 319 Automated Tests (100% Pass)
 ├── run.py                     # Single-command server launcher
 ├── run_tests.py               # Unified multi-runner test execution CLI
 └── requirements.txt           # Minimal, verified cross-platform dependencies
@@ -143,7 +143,7 @@ python demo.py
 ```
 *Showcases fast-path bypass, entropy-triggered reranking, and semantic cache hit directly in terminal.*
 
-### 4. Run Full Automated Test Suite (317 Tests)
+### 4. Run Full Automated Test Suite (319 Tests)
 ```bash
 python run_tests.py --tier full
 ```

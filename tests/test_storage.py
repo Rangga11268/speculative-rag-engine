@@ -347,4 +347,75 @@ class TestEngineStorageBackendSelection:
         set_engine(None)
         engine.storage_repo.close()
 
+    def test_strict_fail_closed_guarantees_zero_data_dispersion(self, sample_chunks, tmp_path, monkeypatch):
+        """When fail-closed is mandated, DB write error aborts and never creates or writes to SQLite."""
+        from unittest.mock import MagicMock
+
+        unwanted_fallback = str(tmp_path / "never_created.db")
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        monkeypatch.setattr(PostgresStorageRepository, "_connect", lambda self: mock_conn)
+
+        repo = PostgresStorageRepository(
+            fallback_to_sqlite=False,
+            sqlite_fallback_path=unwanted_fallback,
+            dimension=384,
+        )
+        assert repo.is_fallback is False
+        assert repo._fallback_repo is None
+
+        mock_cursor.executemany.side_effect = Exception("Write error: Disk full or network timeout")
+
+        with pytest.raises(Exception, match="Write error"):
+            repo.add_chunks(sample_chunks)
+
+        assert repo.is_fallback is False
+        assert repo._fallback_repo is None
+        assert not os.path.exists(unwanted_fallback), "Fallback DB must NOT be created when fallback is disabled"
+
+    def test_health_endpoint_transitions_degraded_to_healthy_upon_recovery(self, tmp_path, monkeypatch):
+        """Health endpoint dynamically recovers from degraded to healthy once primary DB reconnects."""
+        from fastapi.testclient import TestClient
+        from unittest.mock import MagicMock
+        from app.config import Settings
+        from app.core.engine import SpecRAGEngine
+        from app.api.deps import set_engine
+        from app.main import app
+
+        fallback_file = str(tmp_path / "recover_fb.db")
+        settings = Settings(
+            STORAGE_BACKEND="postgres",
+            POSTGRES_PORT=54329,
+            POSTGRES_FALLBACK_TO_SQLITE=True,
+            SQLITE_DB_PATH=fallback_file,
+        )
+        engine = SpecRAGEngine(settings=settings)
+        set_engine(engine)
+
+        client = TestClient(app)
+        res_initial = client.get("/health")
+        assert res_initial.status_code == 200
+        assert res_initial.json()["status"] == "degraded"
+        assert res_initial.json()["is_fallback"] is True
+
+        # Simulate database recovery
+        mock_recovered_conn = MagicMock()
+        monkeypatch.setattr(PostgresStorageRepository, "_connect", lambda self: mock_recovered_conn)
+        recovered = engine.storage_repo.recover_from_fallback()
+        assert recovered is True
+        assert engine.storage_repo.is_fallback is False
+
+        # Endpoint must now reflect healthy status
+        res_recovered = client.get("/health")
+        assert res_recovered.status_code == 200
+        data = res_recovered.json()
+        assert data["status"] == "healthy"
+        assert data["is_fallback"] is False
+
+        set_engine(None)
+        engine.storage_repo.close()
+
+
 

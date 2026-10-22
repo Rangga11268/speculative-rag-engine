@@ -75,6 +75,25 @@ class PostgresStorageRepository(StorageRepository):
             dimension=self.dimension,
         )
 
+    def recover_from_fallback(self) -> bool:
+        """Attempt to reconnect to primary PostgreSQL and exit fallback mode."""
+        with self._lock:
+            try:
+                new_conn = self._connect()
+                new_conn.autocommit = False
+                if self._conn:
+                    try:
+                        self._conn.close()
+                    except Exception:
+                        pass
+                self._conn = new_conn
+                self._is_fallback = False
+                logger.info("Successfully reconnected to PostgreSQL. Deactivated SQLite fallback.")
+                return True
+            except Exception as exc:
+                logger.warning("PostgreSQL recovery attempt failed: %s", exc)
+                return False
+
     def initialize(self) -> None:
         """Create table and indexes in PostgreSQL, or activate fallback."""
         with self._lock:
